@@ -1,0 +1,20 @@
+{
+  "n_train": 7007,
+  "n_test": 1752,
+  "gbm_mae_kwh": 24.904,
+  "gbm_r2": 0.3824,
+  "naive_hour_avg_mae_kwh": 24.515,
+  "naive_hour_avg_r2": 0.3292,
+  "mae_improvement_pct": -1.6,
+  "permutation_importance": {
+    "hour_cos": 0.297,
+    "hour": 0.108,
+    "dayofweek": 0.078,
+    "hour_sin": 0.066,
+    "spot_ct": 0.0,
+    "month": 0.0,
+    "is_weekend": 0.0,
+    "dayofyear": 0.0,
+    "trend": 0.0
+  }
+}
