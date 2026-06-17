@@ -6,9 +6,30 @@ this file covers *why things are the way they are* and *what's next*.
 ## What this is
 
 A self-improving daily pricing+forecasting tool for an EV charging hub. Daily
-loop: **recommend** tomorrow's hourly prices that smooth demand (never below
+loop: **recommend** tomorrow's 15-minute prices that smooth demand (never below
 cost) → deploy → **ingest** the actual kWh → score, accumulate, retrain. Same
 commands work on day 1 and day 500.
+
+## Update: 15-minute resolution (supersedes the hourly design below)
+
+The model now runs at **15-minute** resolution (96 slots/day) instead of hourly,
+driven by the combined `collected_cleaned_data.csv` dataset. What changed:
+
+- **Within-day index** is now `slot` ∈ [0,96), `slot = (hour*60 + minute)//15`
+  (`INTERVAL_MIN`/`SLOTS_PER_DAY` in `core.py`). The demand-shape **profile groups
+  by `(dayofweek, slot)`** and cyclic features are `slot_sin`/`slot_cos`.
+- **Price-effect blocks stay hour-based (0–23)** by design — `PriceEffect` still
+  maps each row's *hour* → block, so the block config and `validate_price_blocks`
+  are unchanged and operator-facing. Only the shape + per-day vector length moved
+  to 15-min. `recommend_prices`/`recommend_day` were already length-agnostic.
+- **Cost floor / tariff** now `spot + Arbeitspreis (7.48) + Steuern&Abgaben`
+  (config `grid_arbeitspreis_ct_per_kwh`, new `taxes_levies_ct_per_kwh` 6.986,
+  `concession_ct_per_kwh` 0.0), matching the data's `Gewinn` column. Steuern&Abgaben
+  changed 6.691→6.986 mid-dataset; future-day floors use the latest (config) value.
+- **`seed`** takes a single `--data CSV` (the `_read_collected` loader: semicolon,
+  German decimal comma, UTF-8 BOM; ignores `Gewinn`/`Profilwert kW`), replacing the
+  two-xlsx `--lastgang`/`--spot` flow. `recommend` plans/`prices.csv` are keyed by
+  `slot` (0–95). Test fixture is `examples/charging_15min_dataset.csv` (90 days).
 
 ## Status: v2 is BUILT (with grouped price betas)
 
@@ -73,8 +94,8 @@ historic and future rows. `forecast_kwh = demand_shape(hour) * exp(beta*price_de
    date (reproducible per day).
 4. **Retrain-from-scratch each day**, not incremental — fast at this scale and
    drift-free.
-5. **Economics are energy-only.** Margin = revenue − (spot + BS Netz Arbeitspreis
-   8.24 + concession 0.11) ct/kWh. Leistungspreis and fixed fees are not per-hour.
+5. **Economics are energy-only.** Margin = revenue − (spot + Arbeitspreis 7.48 +
+   Steuern&Abgaben 6.986) ct/kWh. Leistungspreis and fixed fees are not per-slot.
 
 ### Verification highlights
 
@@ -107,7 +128,8 @@ scikit-learn, openpyxl, pytest).
 
 ## Where the real data lives
 
-The .xlsx source files are NOT in this package (only code + small examples). For
-`seed`, point `--lastgang` / `--spot` at the real Lastgang and Spotmarktpreis
-xlsx. For development/testing, `examples/charging_hourly_dataset.csv` is the
-prebuilt unified table (used by the test fixtures).
+The combined 15-minute dataset is `collected_cleaned_data.csv` (in the hackathon
+data folder, not the package). For `seed`, point `--data` at it. For
+development/testing, `examples/charging_15min_dataset.csv` is a 90-day prebuilt
+unified table (used by the test fixtures); `examples/charging_hourly_dataset.csv`
+is the retired hourly dataset, kept only for reference.

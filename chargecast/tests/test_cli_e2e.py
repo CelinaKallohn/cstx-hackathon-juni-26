@@ -38,8 +38,8 @@ def test_recommend_writes_plan_respecting_floor(tmp_path, seed_df, capsys):
     main(['recommend', '--state', state, '--date', '2026-06-18', '--out', out])
     assert os.path.exists(out)
     plan = pd.read_csv(out)
-    assert len(plan) == 24
-    assert set(['price_ct', 'floor_ct', 'forecast_kwh', 'forecast_lower',
+    assert len(plan) == 96
+    assert set(['slot', 'price_ct', 'floor_ct', 'forecast_kwh', 'forecast_lower',
                 'forecast_upper', 'margin_eur']).issubset(plan.columns)
     assert np.all(plan['price_ct'] >= plan['floor_ct'] - 1e-6)      # hard floor
     assert np.all(plan['price_ct'] <= store.cfg['price_cap_ct'] + 1e-6)
@@ -53,7 +53,7 @@ def test_recommend_evaluate_user_prices_clamps_to_floor(tmp_path, seed_df):
     state, store, _ = _seed_state(tmp_path, seed_df)
     # deliberately below-floor prices; recommend must clamp them up
     pf = str(tmp_path / 'prices.csv')
-    pd.DataFrame({'hour': range(24), 'price_ct': 1.0}).to_csv(pf, index=False)
+    pd.DataFrame({'slot': range(96), 'price_ct': 1.0}).to_csv(pf, index=False)
     out = str(tmp_path / 'eval.csv')
     main(['recommend', '--state', state, '--date', '2026-06-18', '--prices', pf, '--out', out])
     plan = pd.read_csv(out)
@@ -65,9 +65,9 @@ def test_ingest_scores_and_retrains_with_varied_prices(tmp_path, seed_df, capsys
     # a day of varied prices and actuals -> should register a varied-price day
     day = pd.Timestamp('2026-06-18')
     act = pd.DataFrame({
-        'hourstamp': [day + pd.Timedelta(hours=h) for h in range(24)],
-        'actual_kwh': np.linspace(5, 60, 24),
-        'charged_price_ct': np.linspace(20, 90, 24),   # clearly varied
+        'hourstamp': [day + pd.Timedelta(minutes=15 * i) for i in range(96)],
+        'actual_kwh': np.linspace(5, 60, 96),
+        'charged_price_ct': np.linspace(20, 90, 96),   # clearly varied
         'spot_ct': 2.0,
     })
     af = str(tmp_path / 'actuals.csv')

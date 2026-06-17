@@ -1,6 +1,7 @@
-"""Demand-smoothing price recommender (v2 build step 5).
+"""Demand-smoothing price recommender.
 
-Chooses a 24-hour price vector that flattens demand subject to hard constraints:
+Chooses a 96-slot (15-minute) price vector that flattens demand subject to hard
+constraints:
   (a) every price >= cost floor (break-even)            -- never sell at a loss
   (b) total day margin >= 0                              -- only rule on margin
   (c) prices may rise above ref in peaks, fall below in troughs
@@ -47,26 +48,28 @@ def forecast_kwh_for_prices(shape_kwh, prices, ref_price, beta) -> np.ndarray:
     return np.asarray(shape_kwh, float) * np.exp(beta * price_dev)
 
 
-def day_margin_eur(kwh, prices, spot_ct, grid_arbeitspreis_ct, concession_ct) -> float:
+def day_margin_eur(kwh, prices, spot_ct, grid_arbeitspreis_ct, concession_ct,
+                   taxes_levies_ct=0.0) -> float:
     """Total energy margin over the day in EUR (excludes capacity/fixed fees)."""
     kwh = np.asarray(kwh, float)
     prices = np.asarray(prices, float)
     revenue = kwh * prices / 100.0
-    cost = kwh * (np.asarray(spot_ct, float) + grid_arbeitspreis_ct + concession_ct) / 100.0
+    fixed = grid_arbeitspreis_ct + concession_ct + taxes_levies_ct
+    cost = kwh * (np.asarray(spot_ct, float) + fixed) / 100.0
     return float((revenue - cost).sum())
 
 
 def recommend_prices(shape_kwh, spot_ct, *, ref_price, price_cap_ct,
                      grid_arbeitspreis_ct, concession_ct, beta,
-                     n_sweeps=8, n_grid=41) -> np.ndarray:
+                     taxes_levies_ct=0.0, n_sweeps=8, n_grid=41) -> np.ndarray:
     """Coordinate-descent search for the flattest demand curve within bounds.
 
-    Each price is bounded to [floor_ct(hour), price_cap_ct]. Returns the price
+    Each price is bounded to [floor_ct(slot), price_cap_ct]. Returns the price
     vector (ct/kWh) minimising the flatness penalty for the supplied beta.
     """
     shape_kwh = np.asarray(shape_kwh, float)
     n = len(shape_kwh)
-    lo = cost_floor_ct(spot_ct, grid_arbeitspreis_ct, concession_ct)
+    lo = cost_floor_ct(spot_ct, grid_arbeitspreis_ct, concession_ct, taxes_levies_ct)
     lo = np.broadcast_to(lo, (n,)).astype(float).copy()
     hi = np.maximum(np.full(n, float(price_cap_ct)), lo)   # cap never below floor
 
@@ -112,7 +115,7 @@ def explore_fractions(price_effect) -> dict:
 
 
 def recommend_day(forecaster, frame, spot_ct, cfg, *, explore=True, rng=None) -> dict:
-    """Recommend a 24h price vector and report the forecast + economics.
+    """Recommend a 96-slot (15-min) price vector and report the forecast + economics.
 
     Exploration is PER BLOCK: explore=True draws one beta per block from its
     posterior (Thompson sampling) and maps it onto that block's hours, so a block
@@ -129,18 +132,20 @@ def recommend_day(forecaster, frame, spot_ct, cfg, *, explore=True, rng=None) ->
     else:
         beta_used = pe.beta_for_hours(hours)
 
+    taxes = cfg.get('taxes_levies_ct_per_kwh', 0.0)
     prices = recommend_prices(
         shape_kwh, spot_ct,
         ref_price=pe.ref_price, price_cap_ct=cfg['price_cap_ct'],
         grid_arbeitspreis_ct=cfg['grid_arbeitspreis_ct_per_kwh'],
-        concession_ct=cfg['concession_ct_per_kwh'], beta=beta_used)
+        concession_ct=cfg['concession_ct_per_kwh'], beta=beta_used,
+        taxes_levies_ct=taxes)
 
     fc = forecaster.forecast(frame, prices)
     floors = cost_floor_ct(spot_ct, cfg['grid_arbeitspreis_ct_per_kwh'],
-                           cfg['concession_ct_per_kwh'])
+                           cfg['concession_ct_per_kwh'], taxes)
     margin = day_margin_eur(fc['kwh'], prices, spot_ct,
                             cfg['grid_arbeitspreis_ct_per_kwh'],
-                            cfg['concession_ct_per_kwh'])
+                            cfg['concession_ct_per_kwh'], taxes)
     return {
         'prices': prices,
         'floor': np.broadcast_to(floors, (len(shape_kwh),)).astype(float),

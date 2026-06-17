@@ -3,14 +3,14 @@
 A small, self-improving pricing+forecasting tool for an EV charging hub. It
 starts from the historic data you already have, **recommends prices that smooth
 demand** without ever selling below cost, and gets sharper as you feed it each
-real day.
+real day. Everything runs at **15-minute resolution** (96 slots per day).
 
 ## The loop
 
 ```
-1. recommend  propose tomorrow's 24h price vector that flattens demand
-              (or evaluate a price set you supply), with a demand forecast
-              and its uncertainty
+1. recommend  propose tomorrow's 96-slot (15-min) price vector that flattens
+              demand (or evaluate a price set you supply), with a demand
+              forecast and its uncertainty
 2. deploy     you run those prices for a day; customers charge
 3. ingest     you hand it the day's actual kWh; it scores its own forecast,
               adds the day to its memory, and retrains
@@ -25,14 +25,17 @@ Everything lives in one unified table where price (`charged_price_ct`) is a
 normal input column, identical for historic and future rows. The forecast is:
 
 ```
-forecast_kwh(hour, price) = demand_shape(hour) * exp(beta_block(hour) * price_dev)
+forecast_kwh(slot, price) = demand_shape(slot) * exp(beta_block(hour) * price_dev)
 price_dev = (price - ref_price) / ref_price
 ```
 
-- **Demand shape** — *learned from data*. Price-neutral demand per hour. Starts
-  as an hour × weekday profile (robust when data is thin) and auto-upgrades to a
-  gradient-boosting model **only if** it beats the profile on a holdout. On the
-  supplied 2025 data the profile wins, so that's what it uses.
+`slot` is the 15-minute slot of the day (0–95). Price effect is still grouped by
+*hour*-of-day block; the demand shape resolves to 15-minute slots.
+
+- **Demand shape** — *learned from data*. Price-neutral demand per 15-min slot.
+  Starts as a slot × weekday profile (robust when data is thin) and auto-upgrades
+  to a gradient-boosting model **only if** it beats the profile on a holdout. On
+  the supplied data the profile wins, so that's what it uses.
 - **Price effect** — *Bayesian coefficients `beta`, one per time-of-day block*.
   Price sensitivity differs by time of day (flexible at midday, rigid at the
   08:00 commuter peak), so `beta` is grouped into blocks (overnight, morning_peak,
@@ -48,12 +51,13 @@ price_dev = (price - ref_price) / ref_price
 
 ### Price recommender (the new core)
 
-`recommend` chooses a 24-hour price vector that **smooths demand** (minimises the
-coefficient of variation of forecast demand — scale-invariant, so it flattens the
-*shape* rather than just crushing volume), subject to hard rules:
+`recommend` chooses a 96-slot (15-minute) price vector that **smooths demand**
+(minimises the coefficient of variation of forecast demand — scale-invariant, so
+it flattens the *shape* rather than just crushing volume), subject to hard rules:
 
-- every price ≥ **cost floor** = `spot + grid + concession` (break-even, no
-  margin); negative-spot hours never floor below the fixed grid+concession cost,
+- every price ≥ **cost floor** = `spot + grid (Arbeitspreis) + taxes&levies`
+  (break-even, no margin); negative-spot slots never floor below the fixed
+  grid+taxes cost,
 - **total day margin ≥ 0** (automatically met given the break-even floor),
 - prices may rise **above** the reference in peaks and fall **below** it in troughs.
 
@@ -73,11 +77,11 @@ pip install -e .          # from the package directory
 
 ## Commands
 
-Seed once with your historic files (history runs at the reference price):
+Seed once with your combined 15-minute history CSV (history runs at the
+reference price; the loader reads the `collected_cleaned_data.csv` format —
+semicolon-separated, German decimal comma):
 ```bash
-python -m chargecast.cli seed --state ./state \
-  --lastgang Lastgang_Ladeinfrastruktur_Beispiel_Ladehub.xlsx \
-  --spot Spotmarktpreis_.xlsx
+python -m chargecast.cli seed --state ./state --data collected_cleaned_data.csv
 ```
 
 Recommend a day's prices:
@@ -88,8 +92,10 @@ python -m chargecast.cli recommend --state ./state --date 2026-06-18 --prices pr
 # force the exploit optimum (no exploration draw):
 python -m chargecast.cli recommend --state ./state --date 2026-06-18 --no-explore
 ```
-Writes a per-hour plan: `price_ct`, `floor_ct`, `spot_ct`, `forecast_kwh` with
-`forecast_lower`/`forecast_upper` (95% credible interval), and `margin_eur`.
+Writes a per-slot plan (96 rows): `slot`, `hour`, `price_ct`, `floor_ct`,
+`spot_ct`, `forecast_kwh` with `forecast_lower`/`forecast_upper` (95% credible
+interval), and `margin_eur`. A user-supplied `prices.csv` uses columns
+`slot`(0–95), `price_ct` (and optional `spot_ct`).
 
 Ingest a real day (`actuals.csv`: `hourstamp,actual_kwh[,charged_price_ct,spot_ct]`):
 ```bash
@@ -107,7 +113,7 @@ python -m chargecast.cli status --state ./state
 ## State directory
 
 ```
-state/history.csv        every hourly outcome accumulated (the unified table)
+state/history.csv        every 15-min outcome accumulated (the unified table)
 state/model.pkl          trained DemandShapeModel + Bayesian PriceEffect
 state/accuracy_log.csv   one row per scored day (watch error shrink)
 state/config.json        reference price, price-effect prior, price cap, tariff
@@ -117,7 +123,10 @@ state/config.json        reference price, price-effect prior, price cap, tariff
 `prior_elasticity_pct` (your guess, default 50), `prior_confidence`
 (`loose`/`medium`/`tight`), `price_cap_ct` (recommended-price upper bound),
 `price_blocks` (the time-of-day partition — must cover hours 0–23 with no gaps or
-overlaps; validated on load), and the grid/concession tariff rates.
+overlaps; validated on load), and the tariff rates:
+`grid_arbeitspreis_ct_per_kwh` (7.48), `taxes_levies_ct_per_kwh` (6.986, the
+Steuern&Abgaben), `concession_ct_per_kwh` (0.0). The cost floor sums all three
+with the spot price.
 
 ## Honest limitations
 
@@ -133,8 +142,10 @@ overlaps; validated on load), and the grid/concession tariff rates.
   hierarchical per-hour betas that borrow strength via a global hyper-prior,
   superseding fixed blocks once months of varied data exist.
 - Demand-shape day-to-day variation is largely unexplained by current features
-  (hour-of-day and weekday carry nearly all the signal). Weather/events/utilisation
+  (slot-of-day and weekday carry nearly all the signal). Weather/events/utilisation
   are the path to a real GBM win.
 - Margin is energy-only. Capacity charges (Leistungspreis) and fixed monthly fees
-  are not modelled per hour.
+  are not modelled per slot.
+- The Steuern&Abgaben rate changed during the dataset (6.691 → 6.986 ct/kWh);
+  the cost floor for future days uses the latest value from config.
 ```

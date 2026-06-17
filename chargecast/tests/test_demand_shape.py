@@ -1,8 +1,8 @@
-"""Step 1: unified table + demand-shape model.
+"""Unified table + demand-shape model (15-minute resolution).
 
-The demand-shape model is the v0.1 BaselineModel logic unchanged, so its
-predictions must match v0.1 exactly. charged_price_ct must be a first-class
-column of the unified table but must NOT influence the demand shape.
+The demand-shape model groups demand by (dayofweek, slot) at 15-minute
+resolution. charged_price_ct must be a first-class column of the unified table
+but must NOT influence the demand shape.
 """
 import numpy as np
 import pytest
@@ -10,15 +10,12 @@ import pytest
 from chargecast.core import (DemandShapeModel, BaselineModel, add_features,
                              SHAPE_FEATURES, INPUT_COLUMNS)
 
-# v0.1 demand-shape output on the example seed dataset (regression anchor).
-V01_KIND = 'profile'
-V01_N_DAYS = 365
-V01_PRED_SUM = 271214.55
-V01_PRED_HEAD = [1.876415, 1.25, 1.064151, 0.719811, 0.332075, 0.666981,
-                 4.759434, 19.606604, 29.342453, 30.435849, 30.639623,
-                 24.659434, 35.673585, 32.64434, 37.995283, 42.445283,
-                 62.168868, 79.259434, 61.038679, 57.023585, 40.496226,
-                 23.151887, 7.864151, 4.55283]
+# demand-shape output on the 15-minute example fixture (90 days) -- regression anchor.
+EXP_KIND = 'profile'
+EXP_N_DAYS = 90
+EXP_PRED_SUM = 62731.5
+EXP_PRED_HEAD = [0.673077, 0.415385, 0.115385, 0.069231,
+                 0.084615, 0.084615, 0.169231, 2.238462]
 
 
 def _fit(seed_df):
@@ -27,13 +24,20 @@ def _fit(seed_df):
     return DemandShapeModel().fit(feat), feat
 
 
-def test_predictions_match_v01(seed_df):
+def test_predictions_match_anchor(seed_df):
     m, feat = _fit(seed_df)
     pred = m.predict(feat)
-    assert m.kind == V01_KIND
-    assert int(m.n_days) == V01_N_DAYS
-    assert float(pred.sum()) == pytest.approx(V01_PRED_SUM, rel=1e-6)
-    assert np.allclose([float(x) for x in pred[:24]], V01_PRED_HEAD, atol=1e-6)
+    assert m.kind == EXP_KIND
+    assert int(m.n_days) == EXP_N_DAYS
+    assert float(pred.sum()) == pytest.approx(EXP_PRED_SUM, rel=1e-6)
+    assert np.allclose([float(x) for x in pred[:8]], EXP_PRED_HEAD, atol=1e-6)
+
+
+def test_profile_groups_by_slot(seed_df):
+    """The profile must resolve at 15-minute slots, not hours (96 distinct slots)."""
+    m, feat = _fit(seed_df)
+    slots = sorted({s for (_dow, s) in m.profile.keys()})
+    assert max(slots) == 95 and len(slots) == 96
 
 
 def test_charged_price_is_first_class_but_not_a_shape_feature(seed_df):

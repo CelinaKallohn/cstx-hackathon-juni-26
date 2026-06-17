@@ -1,92 +1,85 @@
-"""ChargeCast command line (v2).
+"""ChargeCast command line (15-minute resolution).
 
 Usage:
-  python -m chargecast.cli seed      --state STATE --lastgang FILE.xlsx --spot FILE.xlsx
+  python -m chargecast.cli seed      --state STATE --data collected_cleaned_data.csv
   python -m chargecast.cli recommend --state STATE --date YYYY-MM-DD [--prices prices.csv] [--no-explore] [--out plan.csv]
   python -m chargecast.cli ingest    --state STATE --actuals actuals.csv
   python -m chargecast.cli status    --state STATE
 
-prices.csv  : columns hour(0-23), price_ct      (and optional spot_ct)
+prices.csv  : columns slot(0-95), price_ct      (and optional spot_ct)
               If given to `recommend`, evaluates YOUR prices instead of optimising.
 actuals.csv : columns hourstamp, actual_kwh, charged_price_ct [, spot_ct]
+              (hourstamp at 15-minute resolution)
 """
 from __future__ import annotations
 import argparse, sys, os
 import numpy as np
 import pandas as pd
-from .store import Store, train, margin_per_hour, ref_price
-from .core import add_features, UnifiedForecaster, cost_floor_ct
+from .store import Store, train, margin_per_slot, ref_price
+from .core import add_features, UnifiedForecaster, cost_floor_ct, SLOTS_PER_DAY, INTERVAL_MIN
 from .recommend import recommend_day, day_margin_eur
 
 
-def _read_lastgang(path):
-    # Workbooks split the demand across one sheet per year (e.g. 2025, 2026),
-    # so read every sheet and keep the ones that carry the demand columns.
-    sheets = pd.read_excel(path, sheet_name=None, header=1)
-    frames = []
-    for df in sheets.values():
-        kwh_cols = [c for c in df.columns if 'kWh' in str(c)]
-        if 'Ab-Datum' not in df.columns or 'Ab-Zeit' not in df.columns or not kwh_cols:
-            continue
-        d = df[['Ab-Datum', 'Ab-Zeit', kwh_cols[0]]].dropna(subset=['Ab-Zeit']).copy()
-        d.columns = ['date', 'time', 'kwh']
-        d['kwh'] = pd.to_numeric(d['kwh'], errors='coerce')
-        d['dt'] = pd.to_datetime(d['date'].astype(str) + ' ' + d['time'].astype(str))
-        d['hourstamp'] = d['dt'].dt.floor('h')
-        frames.append(d[['hourstamp', 'kwh']])
-    if not frames:
-        raise ValueError(f"no demand sheets found in {path}")
-    alld = pd.concat(frames, ignore_index=True)
-    return alld.groupby('hourstamp')['kwh'].sum().reset_index().rename(columns={'kwh': 'target_kwh'})
+def _read_collected(path):
+    """Read the combined 15-minute dataset (collected_cleaned_data.csv).
+
+    Semicolon-separated, German decimal comma, UTF-8 BOM. Columns:
+      Datum; Uhrzeit; Profilwert kWh; Profilwert kW; Spotmarktpreis in ct/kWh;
+      Endkundenpreis in ct/kwh; Arbeitspreis Umspannung ct/kwh;
+      Steuern&Abgaben in ct/kwh; Gewinn
+    The 'Gewinn' and 'Profilwert kW' columns are ignored. Returns a tidy frame
+    with hourstamp, spot_ct, target_kwh, charged_price_ct at 15-minute steps.
+    """
+    df = pd.read_csv(path, sep=';', decimal=',', encoding='utf-8-sig')
+    # tolerate the multi-line header ("Profilwert\nkWh"); match by substring
+    def col(*needles):
+        for c in df.columns:
+            cs = str(c).replace('\n', ' ').lower()
+            if all(n.lower() in cs for n in needles):
+                return c
+        raise ValueError(f"column matching {needles} not found in {list(df.columns)}")
+    c_date, c_time = col('datum'), col('uhrzeit')
+    c_kwh = col('profilwert', 'kwh')
+    c_spot = col('spotmarktpreis')
+    c_price = col('endkundenpreis')
+    d = df.dropna(subset=[c_date, c_time]).copy()
+    d['hourstamp'] = pd.to_datetime(
+        d[c_date].astype(str).str.strip() + ' ' + d[c_time].astype(str).str.strip(),
+        dayfirst=True, errors='coerce')
+    d = d.dropna(subset=['hourstamp'])
+    d['target_kwh'] = pd.to_numeric(d[c_kwh], errors='coerce')
+    d['spot_ct'] = pd.to_numeric(d[c_spot], errors='coerce')
+    d['charged_price_ct'] = pd.to_numeric(d[c_price], errors='coerce')
+    d = d.dropna(subset=['target_kwh'])
+    out = d[['hourstamp', 'spot_ct', 'target_kwh', 'charged_price_ct']]
+    return out.groupby('hourstamp', as_index=False).agg(
+        {'spot_ct': 'mean', 'target_kwh': 'sum', 'charged_price_ct': 'mean'})
 
 
-def _read_spot(path):
-    # Same story for spot: multiple sheets per date range (plus a 'Quelle' sheet
-    # with no data). Read all, skip anything that isn't a 6-column price table,
-    # and average duplicate hourstamps where ranges overlap.
-    sheets = pd.read_excel(path, sheet_name=None)
-    def hr(t): return t.hour if hasattr(t, 'hour') else int(round(float(t) * 24)) % 24
-    frames = []
-    for sp in sheets.values():
-        if len(sp) == 0 or sp.shape[1] < 6:
-            continue
-        sp = sp.iloc[:, :6].copy()
-        sp.columns = ['d', 'von', 'tz1', 'bis', 'tz2', 'price']
-        sp['date'] = pd.to_datetime(sp['d'], errors='coerce')
-        sp = sp.dropna(subset=['date'])
-        sp['hour'] = sp['von'].apply(hr)
-        sp['hourstamp'] = sp['date'] + pd.to_timedelta(sp['hour'], unit='h')
-        frames.append(sp[['hourstamp', 'price']])
-    if not frames:
-        raise ValueError(f"no spot sheets found in {path}")
-    allsp = pd.concat(frames, ignore_index=True)
-    return allsp.groupby('hourstamp')['price'].mean().reset_index().rename(columns={'price': 'spot_ct'})
-
-
-def _spot_by_hour(store):
-    """Mean spot price per hour-of-day from history (fallback 8.0 ct)."""
+def _spot_by_slot(store):
+    """Mean spot price per 15-min slot-of-day (0-95) from history (fallback 8.0 ct)."""
     hist = store.load_history()
     if len(hist) == 0:
-        return pd.Series([8.0] * 24, index=range(24))
-    sbh = hist.assign(h=pd.to_datetime(hist['hourstamp']).dt.hour).groupby('h')['spot_ct'].mean()
-    return sbh.reindex(range(24)).fillna(sbh.mean() if sbh.notna().any() else 8.0)
+        return pd.Series([8.0] * SLOTS_PER_DAY, index=range(SLOTS_PER_DAY))
+    ts = pd.to_datetime(hist['hourstamp'])
+    slot = (ts.dt.hour * 60 + ts.dt.minute) // INTERVAL_MIN
+    sbs = hist.assign(s=slot.values).groupby('s')['spot_ct'].mean()
+    return sbs.reindex(range(SLOTS_PER_DAY)).fillna(sbs.mean() if sbs.notna().any() else 8.0)
 
 
 def _day_spot(store, prices_df=None):
-    """24-vector of spot prices for the forecast day."""
-    sbh = _spot_by_hour(store)
+    """96-vector (15-min) of spot prices for the forecast day."""
+    sbs = _spot_by_slot(store)
     if prices_df is not None and 'spot_ct' in prices_df and prices_df['spot_ct'].notna().any():
-        return prices_df['spot_ct'].fillna(prices_df['hour'].map(sbh)).values
-    return np.array([float(sbh.get(h, 8.0)) for h in range(24)])
+        return prices_df['spot_ct'].fillna(prices_df['slot'].map(sbs)).values
+    return np.array([float(sbs.get(s, 8.0)) for s in range(SLOTS_PER_DAY)])
 
 
 def cmd_seed(args):
     store = Store(args.state)
-    dem = _read_lastgang(args.lastgang)
-    spot = _read_spot(args.spot) if args.spot else None
-    df = dem.merge(spot, on='hourstamp', how='left') if spot is not None else dem.assign(spot_ct=np.nan)
+    df = _read_collected(args.data)
     df['spot_ct'] = df['spot_ct'].fillna(df['spot_ct'].median() if df['spot_ct'].notna().any() else 8.0)
-    df['charged_price_ct'] = ref_price(store.cfg)        # history runs at the reference price
+    df['charged_price_ct'] = df['charged_price_ct'].fillna(ref_price(store.cfg))
     df['baseline_pred'] = np.nan
     store.append_history(df[['hourstamp', 'spot_ct', 'target_kwh', 'charged_price_ct', 'baseline_pred']])
     summary = train(store)
@@ -104,26 +97,30 @@ def cmd_recommend(args):
     cfg = store.cfg
     day = pd.to_datetime(args.date)
 
+    taxes = cfg.get('taxes_levies_ct_per_kwh', 0.0)
     user_prices = None
     if args.prices:
         pr = pd.read_csv(args.prices)
         pr.columns = [c.strip().lower() for c in pr.columns]
-        if 'hour' not in pr or 'price_ct' not in pr:
-            print("prices.csv needs columns: hour, price_ct", file=sys.stderr); sys.exit(1)
-        pr = pd.DataFrame({'hour': range(24)}).merge(pr, on='hour', how='left')
+        if 'slot' not in pr or 'price_ct' not in pr:
+            print("prices.csv needs columns: slot, price_ct", file=sys.stderr); sys.exit(1)
+        pr = pd.DataFrame({'slot': range(SLOTS_PER_DAY)}).merge(pr, on='slot', how='left')
         pr['price_ct'] = pr['price_ct'].fillna(ref_price(cfg))
         user_prices = pr
 
     spot = _day_spot(store, user_prices)
     frame = add_features(pd.DataFrame(
-        {'hourstamp': [day + pd.Timedelta(hours=h) for h in range(24)], 'spot_ct': spot}))
-    floors = cost_floor_ct(spot, cfg['grid_arbeitspreis_ct_per_kwh'], cfg['concession_ct_per_kwh'])
+        {'hourstamp': [day + pd.Timedelta(minutes=INTERVAL_MIN * i) for i in range(SLOTS_PER_DAY)],
+         'spot_ct': spot}))
+    floors = cost_floor_ct(spot, cfg['grid_arbeitspreis_ct_per_kwh'],
+                           cfg['concession_ct_per_kwh'], taxes)
 
     if user_prices is not None:
         prices = np.maximum(user_prices['price_ct'].values, floors)   # never below floor
         out = fc.forecast(frame, prices)
         margin = day_margin_eur(out['kwh'], prices, spot,
-                                cfg['grid_arbeitspreis_ct_per_kwh'], cfg['concession_ct_per_kwh'])
+                                cfg['grid_arbeitspreis_ct_per_kwh'],
+                                cfg['concession_ct_per_kwh'], taxes)
         mode = 'evaluated your prices (clamped to floor)'
     else:
         # reproducible-per-date exploration draw
@@ -136,14 +133,15 @@ def cmd_recommend(args):
 
     plan = pd.DataFrame({
         'hourstamp': frame['hourstamp'],
-        'hour': range(24),
+        'slot': range(SLOTS_PER_DAY),
+        'hour': frame['hour'].values,
         'price_ct': np.round(prices, 2),
         'floor_ct': np.round(floors, 2),
         'spot_ct': np.round(spot, 3),
         'forecast_kwh': np.round(out['kwh'], 2),
         'forecast_lower': np.round(out['kwh_lower'], 2),
         'forecast_upper': np.round(out['kwh_upper'], 2),
-        'margin_eur': np.round(margin_per_hour(out['kwh'], prices, spot, cfg), 2),
+        'margin_eur': np.round(margin_per_slot(out['kwh'], prices, spot, cfg), 2),
     })
     dest = args.out or os.path.join(args.state, f'plan_{args.date}.csv')
     plan.to_csv(dest, index=False)
@@ -199,7 +197,7 @@ def cmd_ingest(args):
     summary = train(store)
 
     if score:
-        print(f"scored {score['date']}: {score['pct_error']}% day error ({score['mae_kwh']} kWh MAE/hr)")
+        print(f"scored {score['date']}: {score['pct_error']}% day error ({score['mae_kwh']} kWh MAE/slot)")
     print("retrained on all data:")
     for k, v in summary.items():
         print(f"  {k}: {v}")
@@ -211,7 +209,7 @@ def cmd_status(args):
     acc = store.load_accuracy()
     m = store.load_model()
     days = pd.to_datetime(hist['hourstamp']).dt.normalize().nunique() if len(hist) else 0
-    print(f"history: {len(hist)} hourly rows across {days} days")
+    print(f"history: {len(hist)} 15-min rows across {days} days")
     if m is not None:
         from .recommend import explore_fraction
         pe = m['price']
@@ -236,7 +234,7 @@ def cmd_status(args):
 def main(argv=None):
     p = argparse.ArgumentParser(prog='chargecast')
     sub = p.add_subparsers(dest='cmd', required=True)
-    s = sub.add_parser('seed'); s.add_argument('--state', required=True); s.add_argument('--lastgang', required=True); s.add_argument('--spot'); s.set_defaults(func=cmd_seed)
+    s = sub.add_parser('seed'); s.add_argument('--state', required=True); s.add_argument('--data', required=True); s.set_defaults(func=cmd_seed)
     s = sub.add_parser('recommend'); s.add_argument('--state', required=True); s.add_argument('--date', required=True); s.add_argument('--prices'); s.add_argument('--no-explore', action='store_true'); s.add_argument('--out'); s.set_defaults(func=cmd_recommend)
     s = sub.add_parser('ingest'); s.add_argument('--state', required=True); s.add_argument('--actuals', required=True); s.set_defaults(func=cmd_ingest)
     s = sub.add_parser('status'); s.add_argument('--state', required=True); s.set_defaults(func=cmd_status)

@@ -1,4 +1,4 @@
-"""Core forecasting engine for the charging hub (v2 unified design).
+"""Core forecasting engine for the charging hub.
 
 The forecast is two cooperating parts over ONE unified table where price is a
 normal input column (identical columns for historic and future rows):
@@ -8,7 +8,7 @@ normal input column (identical columns for historic and future rows):
                      deliberately does NOT read charged_price_ct.
   2. PRICE EFFECT  - a Bayesian coefficient on relative price deviation, fed by
                      charged_price_ct. Starts from the user's prior and sharpens
-                     with varied-price data. (Added in build step 2.)
+                     with varied-price data.
 
 `charged_price_ct` is a first-class column of the unified table everywhere; it is
 simply routed to the price-effect part rather than the demand-shape part.
@@ -18,15 +18,20 @@ import math
 import numpy as np
 import pandas as pd
 
+# Intraday resolution. The model runs on 15-minute slots: 96 slots per day,
+# indexed 0..95 by slot = (hour*60 + minute) // INTERVAL_MIN.
+INTERVAL_MIN = 15
+SLOTS_PER_DAY = 24 * 60 // INTERVAL_MIN     # 96
+
 # The unified input schema. Historic and future rows carry identical columns.
-INPUT_COLUMNS = ['charged_price_ct', 'spot_ct', 'hour', 'dayofweek', 'month',
-                 'is_weekend', 'dayofyear', 'trend', 'hour_sin', 'hour_cos']
+INPUT_COLUMNS = ['charged_price_ct', 'spot_ct', 'slot', 'hour', 'dayofweek', 'month',
+                 'is_weekend', 'dayofyear', 'trend', 'slot_sin', 'slot_cos']
 
 # Features the DEMAND-SHAPE model reads. charged_price_ct is intentionally
 # excluded: the shape model predicts price-neutral demand; price is handled by
 # the Bayesian price-effect coefficient instead.
-SHAPE_FEATURES = ['spot_ct', 'hour', 'dayofweek', 'month', 'is_weekend',
-                  'dayofyear', 'trend', 'hour_sin', 'hour_cos']
+SHAPE_FEATURES = ['spot_ct', 'slot', 'hour', 'dayofweek', 'month', 'is_weekend',
+                  'dayofyear', 'trend', 'slot_sin', 'slot_cos']
 
 # Back-compat alias (v0.1 name).
 FEATURES = SHAPE_FEATURES
@@ -97,15 +102,15 @@ def validate_price_blocks(blocks: dict) -> dict:
     return clean
 
 
-def cost_floor_ct(spot_ct, grid_arbeitspreis_ct, concession_ct):
-    """Break-even price per kWh (no margin): spot + grid + concession.
+def cost_floor_ct(spot_ct, grid_arbeitspreis_ct, concession_ct, taxes_levies_ct=0.0):
+    """Break-even price per kWh (no margin): spot + grid + concession + taxes.
 
-    Pure arithmetic, no learning. On negative-spot hours the floor never drops
-    below the fixed grid+concession cost the operator still pays, i.e.
-        floor = (grid + concession) + max(spot, 0)
+    Pure arithmetic, no learning. On negative-spot slots the floor never drops
+    below the fixed grid+concession+taxes cost the operator still pays, i.e.
+        floor = (grid + concession + taxes) + max(spot, 0)
     Accepts a scalar or an array of spot prices; returns the same shape.
     """
-    fixed = float(grid_arbeitspreis_ct) + float(concession_ct)
+    fixed = float(grid_arbeitspreis_ct) + float(concession_ct) + float(taxes_levies_ct)
     return fixed + np.clip(np.asarray(spot_ct, float), 0.0, None)
 
 
@@ -119,13 +124,15 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     ts = pd.to_datetime(df['hourstamp'])
     df['hour'] = ts.dt.hour
+    df['minute'] = ts.dt.minute
+    df['slot'] = (ts.dt.hour * 60 + ts.dt.minute) // INTERVAL_MIN     # 0..95
     df['dayofweek'] = ts.dt.dayofweek
     df['month'] = ts.dt.month
     df['is_weekend'] = (ts.dt.dayofweek >= 5).astype(int)
     df['dayofyear'] = ts.dt.dayofyear
     df['trend'] = (ts - ts.min()).dt.total_seconds() / 3600.0
-    df['hour_sin'] = np.sin(2 * np.pi * df['hour'] / 24)
-    df['hour_cos'] = np.cos(2 * np.pi * df['hour'] / 24)
+    df['slot_sin'] = np.sin(2 * np.pi * df['slot'] / SLOTS_PER_DAY)
+    df['slot_cos'] = np.cos(2 * np.pi * df['slot'] / SLOTS_PER_DAY)
     return df
 
 
@@ -139,31 +146,31 @@ class DemandShapeModel:
 
     def __init__(self):
         self.kind = 'profile'          # 'profile' or 'gbm'
-        self.profile = None            # dict[(dow, hour)] -> mean kwh
-        self.global_hour = None        # dict[hour] -> mean kwh (fallback)
+        self.profile = None            # dict[(dow, slot)] -> mean kwh
+        self.global_slot = None        # dict[slot] -> mean kwh (fallback)
         self.gbm = None
         self.n_days = 0
 
     def _fit_profile(self, df):
-        g = df.groupby(['dayofweek', 'hour'])['target_kwh'].mean()
+        g = df.groupby(['dayofweek', 'slot'])['target_kwh'].mean()
         self.profile = {k: float(v) for k, v in g.items()}
-        gh = df.groupby('hour')['target_kwh'].mean()
-        self.global_hour = {int(k): float(v) for k, v in gh.items()}
+        gs = df.groupby('slot')['target_kwh'].mean()
+        self.global_slot = {int(k): float(v) for k, v in gs.items()}
 
     def _profile_predict(self, df):
         out = []
         for _, r in df.iterrows():
-            key = (int(r['dayofweek']), int(r['hour']))
+            key = (int(r['dayofweek']), int(r['slot']))
             if key in self.profile:
                 out.append(self.profile[key])
             else:
-                out.append(self.global_hour.get(int(r['hour']), 0.0))
+                out.append(self.global_slot.get(int(r['slot']), 0.0))
         return np.array(out)
 
     def fit(self, df: pd.DataFrame):
         """df: hourly rows with features + target_kwh."""
         df = df.dropna(subset=['target_kwh'])
-        self.n_days = df['hourstamp'].dt.normalize().nunique() if 'hourstamp' in df else len(df)//24
+        self.n_days = df['hourstamp'].dt.normalize().nunique() if 'hourstamp' in df else len(df)//SLOTS_PER_DAY
         self._fit_profile(df)
 
         if self.n_days >= GBM_MIN_DAYS and len(df) > 500:

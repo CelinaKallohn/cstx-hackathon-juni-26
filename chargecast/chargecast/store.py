@@ -23,10 +23,13 @@ DEFAULT_CONFIG = {
     "price_cap_ct": 150.0,                # sane upper bound for recommended prices
     # time-of-day blocks for grouped price betas (must partition hours 0-23)
     "price_blocks": DEFAULT_PRICE_BLOCKS,
-    # BS Netz tariff (Umspannung 20/0,4 kV, < 2500 h/a) used in the supplied calc
-    "grid_arbeitspreis_ct_per_kwh": 8.24,
+    # Tariff from the collected_cleaned_data.csv (15-minute dataset). The cost
+    # floor = spot + grid (Arbeitspreis) + concession + taxes&levies, which
+    # matches the data's Gewinn = kWh*(Endkundenpreis - spot - Arbeitspreis - Steuern&Abgaben).
+    "grid_arbeitspreis_ct_per_kwh": 7.48,    # Arbeitspreis Umspannung (constant in data)
     "grid_leistungspreis_eur_per_kw_a": 19.76,
-    "concession_ct_per_kwh": 0.11,
+    "concession_ct_per_kwh": 0.0,            # folded into taxes&levies for this dataset
+    "taxes_levies_ct_per_kwh": 6.986,        # Steuern&Abgaben (latest; was 6.691 in early 2025)
 }
 
 
@@ -91,11 +94,17 @@ class Store:
         return pd.read_csv(p) if os.path.exists(p) else pd.DataFrame()
 
 
-def margin_per_hour(demand_kwh, charged_price_ct, spot_ct, cfg):
-    """Energy margin per hour in EUR (excludes capacity/Leistungspreis, which is monthly)."""
+def margin_per_slot(demand_kwh, charged_price_ct, spot_ct, cfg):
+    """Energy margin per 15-min slot in EUR (excludes capacity/Leistungspreis, which is monthly)."""
     revenue = demand_kwh * charged_price_ct / 100.0
-    energy_cost = demand_kwh * (spot_ct + cfg['grid_arbeitspreis_ct_per_kwh'] + cfg['concession_ct_per_kwh']) / 100.0
+    fixed = (cfg['grid_arbeitspreis_ct_per_kwh'] + cfg['concession_ct_per_kwh']
+             + cfg.get('taxes_levies_ct_per_kwh', 0.0))
+    energy_cost = demand_kwh * (spot_ct + fixed) / 100.0
     return revenue - energy_cost
+
+
+# Back-compat alias (was per-hour in the hourly model).
+margin_per_hour = margin_per_slot
 
 
 def ref_price(cfg) -> float:
