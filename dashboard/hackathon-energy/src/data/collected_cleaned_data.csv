@@ -1,6 +1,4 @@
-﻿Datum;Uhrzeit;"Profilwert
-kWh";"Profilwert
-kW";Spotmarktpreis in ct/kWh;Endkundenpreis in ct/kwh;Arbeitspreis Umspannung ct/kwh;Steuern&Abgaben in ct/kwh;Gewinn
+﻿Datum;Uhrzeit;"ProfilwertkWh";"ProfilwertkW";Spotmarktpreis in ct/kWh;Endkundenpreis in ct/kwh;Arbeitspreis Umspannung ct/kwh;Steuern&Abgaben in ct/kwh;Gewinn
 1.1.2025;00:00:00;0,1;0,4;0,216;59;7,48;6,691;4,4613
 1.1.2025;00:15:00;0,05;0,2;0,216;59;7,48;6,691;2,23065
 1.1.2025;00:30:00;0,1;0,4;0,216;59;7,48;6,691;4,4613

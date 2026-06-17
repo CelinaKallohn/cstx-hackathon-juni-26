@@ -1,0 +1,74 @@
+.tagesgewinn-wrap {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.gewinn-card {
+  padding: 20px;
+  border-radius: 8px;
+  min-width: 200px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+.gewinn-card.gewinn {
+  background: linear-gradient(135deg, rgba(145, 203, 116, 0.15), rgba(145, 203, 116, 0.05));
+  border: 2px solid #91CB74;
+}
+
+.gewinn-card.verlust {
+  background: linear-gradient(135deg, rgba(238, 102, 102, 0.15), rgba(238, 102, 102, 0.05));
+  border: 2px solid #EE6666;
+}
+
+.gewinn-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+
+.gewinn-header .icon {
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.gewinn-card.gewinn .icon {
+  color: #91CB74;
+}
+
+.gewinn-card.verlust .icon {
+  color: #EE6666;
+}
+
+.gewinn-value {
+  font-size: 32px;
+  font-weight: bold;
+  margin: 8px 0;
+}
+
+.gewinn-card.gewinn .gewinn-value {
+  color: #91CB74;
+}
+
+.gewinn-card.verlust .gewinn-value {
+  color: #EE6666;
+}
+
+.gewinn-label {
+  font-size: 14px;
+  color: #999;
+  font-weight: 500;
+}
+
+.chart {
+  flex: 1;
+  min-height: 280px;
+}
+

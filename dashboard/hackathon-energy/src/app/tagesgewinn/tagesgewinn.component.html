@@ -1,0 +1,13 @@
+<div class="gewinn-card" [class.gewinn]="isProfit" [class.verlust]="!isProfit">
+  <div class="gewinn-header">
+    <span class="label">Gesamtgewinn</span>
+    <span class="icon" *ngIf="isProfit">✓</span>
+    <span class="icon" *ngIf="!isProfit">✗</span>
+  </div>
+  <div class="gewinn-value">
+    {{ isProfit ? '+' : '' }}€{{ currentDayGain ? Math.abs(currentDayGain).toFixed(2) : '0.00' }}
+  </div>
+  <div class="gewinn-label">{{ isProfit ? 'Gewinn' : 'Verlust' }}</div>
+</div>
+
+

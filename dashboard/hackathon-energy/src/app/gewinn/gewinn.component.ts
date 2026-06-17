@@ -1,28 +1,33 @@
 import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import * as echarts from 'echarts/core';
-import { BarChart } from 'echarts/charts';
+import { LineChart } from 'echarts/charts';
 import { TitleComponent, TooltipComponent, GridComponent, LegendComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import { Subscription } from 'rxjs';
 import { DateSelectionService } from '../services/date-selection.service';
 
-// Register required ECharts components for bar chart
-echarts.use([BarChart, TitleComponent, TooltipComponent, GridComponent, LegendComponent, CanvasRenderer]);
+// Register required ECharts components for line chart
+echarts.use([LineChart, TitleComponent, TooltipComponent, GridComponent, LegendComponent, CanvasRenderer]);
+
+interface DayData {
+  times: string[];
+  profit: number[]; // in €
+}
 
 @Component({
-  selector: 'app-lastgang',
+  selector: 'app-gewinn',
   standalone: true,
   imports: [CommonModule],
-  templateUrl: './lastgang.component.html',
-  styleUrls: ['./lastgang.component.css'],
+  templateUrl: './gewinn.component.html',
+  styleUrls: ['./gewinn.component.css'],
 })
-export class Lastgang implements AfterViewInit, OnDestroy {
+export class Gewinn implements AfterViewInit, OnDestroy {
   @ViewChild('chart', { static: true }) chartEl!: ElementRef<HTMLDivElement>;
   private chartInstance: echarts.ECharts | null = null;
 
-  // parsed data: date (DD.MM.YYYY) -> { times: string[], loads: number[] }
-  private dataByDate: Record<string, { times: string[]; loads: number[] }> = {};
+  // parsed data: date (DD.MM.YYYY) -> { times, profit }
+  private dataByDate: Record<string, DayData> = {};
   dates: string[] = [];
   selectedDateIndex = 0;
 
@@ -32,7 +37,7 @@ export class Lastgang implements AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     this.chartInstance = echarts.init(this.chartEl.nativeElement);
-    this.init().catch(err => console.error('Fehler beim Initialisieren Lastgang:', err));
+    this.init().catch(err => console.error('Fehler beim Initialisieren Gewinn:', err));
   }
 
   private async init(): Promise<void> {
@@ -47,7 +52,7 @@ export class Lastgang implements AfterViewInit, OnDestroy {
         this.updateChartForDate(initDate);
       }
 
-      // Merge available dates from both components and publish to service
+      // Merge available dates from other components
       const currentDates = (this.dateService as any)['datesSubject'].getValue() || [];
       const mergedDates = Array.from(new Set([...currentDates, ...this.dates])).sort((a, b) => {
         const pa = a.split('.').map(Number);
@@ -60,7 +65,7 @@ export class Lastgang implements AfterViewInit, OnDestroy {
         this.dateService.setAvailableDates(mergedDates);
       }
 
-      // subscribe for date changes from the global DateSelectionService
+      // Subscribe for date changes
       this.dateSub = this.dateService.date$.subscribe(iso => {
         if (!iso) return;
         const parts = iso.split('-');
@@ -89,31 +94,36 @@ export class Lastgang implements AfterViewInit, OnDestroy {
     const lines = content.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
     if (lines.length === 0) return;
 
-    // header: Datum;Uhrzeit;"Profilwert kWh";"Profilwert kW";...
+    // header: ...;Gewinn
     const header = lines[0].split(';').map(h => h.toLowerCase().replaceAll('"', ''));
     const dateIdx = Math.max(0, header.findIndex(h => h.includes('datum')));
     const timeIdx = Math.max(1, header.findIndex(h => h.includes('uhrzeit')));
-    const loadIdx = Math.max(2, header.findIndex(h => h.includes('profilwert') && h.includes('kwh')));
+    const gainIdx = Math.max(8, header.findIndex(h => h.includes('gewinn')));
 
     for (let i = 1; i < lines.length; i++) {
       const cols = lines[i].split(';').map(c => c.replaceAll('"', ''));
-      if (cols.length <= Math.max(dateIdx, timeIdx, loadIdx)) continue;
+      if (cols.length <= Math.max(dateIdx, timeIdx, gainIdx)) continue;
 
-      // Normalize date: "1.1.2025" -> "01.01.2025"
+      // Normalize date
       let dateStr = cols[dateIdx];
       const dateParts = dateStr.split('.');
       if (dateParts.length !== 3) continue;
       dateStr = `${dateParts[0].padStart(2, '0')}.${dateParts[1].padStart(2, '0')}.${dateParts[2]}`;
 
-      const time = cols[timeIdx]; // HH:MM:SS
-      let loadStr = cols[loadIdx] || '';
-      loadStr = loadStr.replaceAll('.', '').replace(',', '.');
-      const load = Number.parseFloat(loadStr);
-      if (Number.isNaN(load)) continue;
+      const time = cols[timeIdx];
 
-      if (!this.dataByDate[dateStr]) this.dataByDate[dateStr] = { times: [], loads: [] };
+      // Parse gain value
+      let gainStr = cols[gainIdx] || '';
+      gainStr = gainStr.replaceAll('.', '').replace(',', '.');
+      const gain = Number.parseFloat(gainStr);
+
+      if (Number.isNaN(gain)) continue;
+
+      if (!this.dataByDate[dateStr]) {
+        this.dataByDate[dateStr] = { times: [], profit: [] };
+      }
       this.dataByDate[dateStr].times.push(time);
-      this.dataByDate[dateStr].loads.push(load);
+      this.dataByDate[dateStr].profit.push(gain / 100); // Convert from ct to €
     }
 
     this.dates = Object.keys(this.dataByDate).sort((a, b) => {
@@ -129,38 +139,81 @@ export class Lastgang implements AfterViewInit, OnDestroy {
   private updateChartForDate(date: string) {
     const d = this.dataByDate[date];
     if (!d) return;
+
+    // Calculate min/max for dynamic y-axis
+    const profitMin = d.profit.length ? Math.min(...d.profit) : 0;
+    const profitMax = d.profit.length ? Math.max(...d.profit) : 0;
+    const padding = (profitMax - profitMin) * 0.1 || 5;
+    const yMin = Math.floor(profitMin - padding);
+    const yMax = Math.ceil(profitMax + padding);
+
+    // Split data into positive and negative for separate series with different colors
+    const positiveData = d.profit.map(v => v >= 0 ? v : undefined);
+    const negativeData = d.profit.map(v => v < 0 ? v : undefined);
+
     const option: any = {
-      title: { text: `Lastgang` },
-      tooltip: { trigger: 'axis' },
+      title: { text: `Gewinn` },
+      tooltip: {
+        trigger: 'axis',
+        formatter: (params: any) => {
+          if (!Array.isArray(params)) params = [params];
+          let result = params[0].axisValue + '<br/>';
+          for (const p of params) {
+            const value = p.value;
+            if (value !== undefined && value !== null) {
+              const label = value >= 0 ? `✓ Gewinn: €${Math.abs(value).toFixed(2)}` : `✗ Verlust: €${Math.abs(value).toFixed(2)}`;
+              result += label + '<br/>';
+            }
+          }
+          return result;
+        },
+      },
       xAxis: {
         type: 'category',
         data: d.times,
         boundaryGap: false,
         name: 'Uhrzeit',
         axisLabel: {
-          interval: 7, // Show every 8th element (for 15-min intervals -> 2-hour display)
+          interval: 7,
           formatter: (value: string) => {
-            // Remove seconds if present (HH:MM:SS -> HH:MM)
             const parts = value.split(':');
             return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : value;
           },
         },
       },
-      yAxis: { type: 'value', name: 'Last (kWh)' },
+      yAxis: { type: 'value', name: 'Gewinn (€)', min: yMin, max: yMax },
       series: [
         {
-          name: 'Last (kWh)',
-          type: 'bar',
-          data: d.loads,
-          itemStyle: { opacity: 0.9 },
+          name: 'Gewinn',
+          type: 'line',
+          data: positiveData,
+          smooth: true,
+          itemStyle: { color: '#91CB74' },
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: 'rgba(145, 203, 116, 0.3)' },
+              { offset: 1, color: 'rgba(145, 203, 116, 0.1)' },
+            ]),
+          },
+        },
+        {
+          name: 'Verlust',
+          type: 'line',
+          data: negativeData,
+          smooth: true,
+          itemStyle: { color: '#EE6666' },
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: 'rgba(238, 102, 102, 0.3)' },
+              { offset: 1, color: 'rgba(238, 102, 102, 0.1)' },
+            ]),
+          },
         },
       ],
       grid: { left: '10%', right: '10%', bottom: '15%' },
     };
     this.chartInstance?.setOption(option);
   }
-
-  // navigation is handled globally via DateSelectionService / Datepicker
 
   private readonly onResize = () => {
     if (this.chartInstance) this.chartInstance.resize();
@@ -175,6 +228,4 @@ export class Lastgang implements AfterViewInit, OnDestroy {
     if (this.dateSub) this.dateSub.unsubscribe();
   }
 }
-
-
 
