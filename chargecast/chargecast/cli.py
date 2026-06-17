@@ -20,24 +20,47 @@ from .recommend import recommend_day, day_margin_eur
 
 
 def _read_lastgang(path):
-    df = pd.read_excel(path, sheet_name=0, header=1)
-    col_kwh = [c for c in df.columns if 'kWh' in str(c)][0]
-    df = df[['Ab-Datum', 'Ab-Zeit', col_kwh]].dropna(subset=['Ab-Zeit'])
-    df.columns = ['date', 'time', 'kwh']
-    df['kwh'] = pd.to_numeric(df['kwh'], errors='coerce')
-    df['dt'] = pd.to_datetime(df['date'].astype(str) + ' ' + df['time'].astype(str))
-    df['hourstamp'] = df['dt'].dt.floor('h')
-    return df.groupby('hourstamp')['kwh'].sum().reset_index().rename(columns={'kwh': 'target_kwh'})
+    # Workbooks split the demand across one sheet per year (e.g. 2025, 2026),
+    # so read every sheet and keep the ones that carry the demand columns.
+    sheets = pd.read_excel(path, sheet_name=None, header=1)
+    frames = []
+    for df in sheets.values():
+        kwh_cols = [c for c in df.columns if 'kWh' in str(c)]
+        if 'Ab-Datum' not in df.columns or 'Ab-Zeit' not in df.columns or not kwh_cols:
+            continue
+        d = df[['Ab-Datum', 'Ab-Zeit', kwh_cols[0]]].dropna(subset=['Ab-Zeit']).copy()
+        d.columns = ['date', 'time', 'kwh']
+        d['kwh'] = pd.to_numeric(d['kwh'], errors='coerce')
+        d['dt'] = pd.to_datetime(d['date'].astype(str) + ' ' + d['time'].astype(str))
+        d['hourstamp'] = d['dt'].dt.floor('h')
+        frames.append(d[['hourstamp', 'kwh']])
+    if not frames:
+        raise ValueError(f"no demand sheets found in {path}")
+    alld = pd.concat(frames, ignore_index=True)
+    return alld.groupby('hourstamp')['kwh'].sum().reset_index().rename(columns={'kwh': 'target_kwh'})
 
 
 def _read_spot(path):
-    sp = pd.read_excel(path, sheet_name=0)
-    sp.columns = ['d', 'von', 'tz1', 'bis', 'tz2', 'price'][:len(sp.columns)]
+    # Same story for spot: multiple sheets per date range (plus a 'Quelle' sheet
+    # with no data). Read all, skip anything that isn't a 6-column price table,
+    # and average duplicate hourstamps where ranges overlap.
+    sheets = pd.read_excel(path, sheet_name=None)
     def hr(t): return t.hour if hasattr(t, 'hour') else int(round(float(t) * 24)) % 24
-    sp['hour'] = sp['von'].apply(hr)
-    sp['date'] = pd.to_datetime(sp['d'])
-    sp['hourstamp'] = sp['date'] + pd.to_timedelta(sp['hour'], unit='h')
-    return sp.groupby('hourstamp')['price'].mean().reset_index().rename(columns={'price': 'spot_ct'})
+    frames = []
+    for sp in sheets.values():
+        if len(sp) == 0 or sp.shape[1] < 6:
+            continue
+        sp = sp.iloc[:, :6].copy()
+        sp.columns = ['d', 'von', 'tz1', 'bis', 'tz2', 'price']
+        sp['date'] = pd.to_datetime(sp['d'], errors='coerce')
+        sp = sp.dropna(subset=['date'])
+        sp['hour'] = sp['von'].apply(hr)
+        sp['hourstamp'] = sp['date'] + pd.to_timedelta(sp['hour'], unit='h')
+        frames.append(sp[['hourstamp', 'price']])
+    if not frames:
+        raise ValueError(f"no spot sheets found in {path}")
+    allsp = pd.concat(frames, ignore_index=True)
+    return allsp.groupby('hourstamp')['price'].mean().reset_index().rename(columns={'price': 'spot_ct'})
 
 
 def _spot_by_hour(store):

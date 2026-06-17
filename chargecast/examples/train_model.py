@@ -13,7 +13,7 @@ def main():
     Xte, yte = te[FEATURES], te['target_kwh']
 
     model = HistGradientBoostingRegressor(
-        max_iter=400, learning_rate=0.05, max_depth=6,
+        max_iter=400, learning_rate=0.05, max_depth=4,
         l2_regularization=1.0, random_state=42)
     model.fit(Xtr, ytr)
 
