@@ -1,0 +1,16 @@
+.date-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.date-controls button {
+  padding: 0.3rem 0.6rem;
+  font-size: 1.1rem;
+}
+
+.date-count {
+  margin-left: 0.5rem;
+  color: #666;
+}
+

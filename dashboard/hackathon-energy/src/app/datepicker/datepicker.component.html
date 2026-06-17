@@ -1,0 +1,7 @@
+<div class="date-controls">
+  <button (click)="onPrev()">‹</button>
+  <input type="date" [value]="(ds.date$ | async) || ''" (change)="onDateChange($event.target.value)" />
+  <button (click)="onNext()">›</button>
+</div>
+
+
