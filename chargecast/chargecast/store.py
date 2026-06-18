@@ -1,7 +1,7 @@
 """Persistence + economics for ChargeCast.
 
 State lives in a directory:
-  state/history.csv      - all hourly outcomes accumulated so far
+  state/history.csv      - all 15-minute outcomes accumulated so far
   state/model.pkl        - trained DemandShapeModel + Bayesian PriceEffect
   state/accuracy_log.csv - one row per day the model was scored
   state/config.json      - reference price, price-effect prior, tariff
@@ -10,8 +10,8 @@ from __future__ import annotations
 import os, json, pickle
 import numpy as np
 import pandas as pd
-from .core import (DemandShapeModel, PriceEffect, add_features,
-                   DEFAULT_PRICE_BLOCKS, validate_price_blocks)
+from .demand_forecast_model import (DemandShapeModel, PriceEffect, add_features,
+                                     DEFAULT_PRICE_BLOCKS, validate_price_blocks)
 
 DEFAULT_CONFIG = {
     "reference_price_ct": 59.0,

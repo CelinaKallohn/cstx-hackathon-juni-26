@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from chargecast.core import (DemandShapeModel, PriceEffect, UnifiedForecaster,
+from chargecast.demand_forecast_model import (DemandShapeModel, PriceEffect, UnifiedForecaster,
                              add_features, pct_to_beta)
 
 REF = 59.0

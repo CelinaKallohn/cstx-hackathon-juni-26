@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from chargecast.core import cost_floor_ct
+from chargecast.demand_forecast_model import cost_floor_ct
 
 GRID = 8.24
 CONC = 0.11

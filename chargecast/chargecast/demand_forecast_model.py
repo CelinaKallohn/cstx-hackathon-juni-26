@@ -38,6 +38,9 @@ FEATURES = SHAPE_FEATURES
 
 GBM_MIN_DAYS = 120          # below this, the profile baseline is used
 PRICE_VARIATION_THRESHOLD = 0.02  # >2% intraday price spread = a "varied-price" day
+GBM_TRAIN_FRACTION = 0.85   # chronological train share; the rest is the GBM-vs-profile holdout
+GBM_IMPROVEMENT_RATIO = 0.98  # GBM is adopted only if its holdout MAE < this * profile MAE
+RANDOM_SEED = 42            # fixed seed so the GBM is reproducible
 
 # --- price-effect (Bayesian coefficient) constants ---
 PRICE_DEV_EPS = 1e-4        # |price_dev| below this carries no price signal
@@ -183,20 +186,20 @@ class DemandShapeModel:
         from sklearn.ensemble import HistGradientBoostingRegressor
         from sklearn.metrics import mean_absolute_error
         d = df.sort_values('hourstamp')
-        sp = int(len(d) * 0.85)
+        sp = int(len(d) * GBM_TRAIN_FRACTION)
         tr, te = d.iloc[:sp], d.iloc[sp:]
         if len(te) < 50:
             self.kind = 'profile'; return
         gbm = HistGradientBoostingRegressor(
             max_iter=400, learning_rate=0.05, max_depth=6,
-            l2_regularization=1.0, random_state=42)
+            l2_regularization=1.0, random_state=RANDOM_SEED)
         gbm.fit(tr[SHAPE_FEATURES], tr['target_kwh'])
         gbm_mae = mean_absolute_error(te['target_kwh'], np.clip(gbm.predict(te[SHAPE_FEATURES]), 0, None))
         # profile holdout
         prof_pred = self._profile_predict(te)
         prof_mae = mean_absolute_error(te['target_kwh'], prof_pred)
         # only adopt GBM if it genuinely beats the profile
-        if gbm_mae < prof_mae * 0.98:
+        if gbm_mae < prof_mae * GBM_IMPROVEMENT_RATIO:
             gbm.fit(d[SHAPE_FEATURES], d['target_kwh'])  # refit on all data
             self.gbm = gbm
             self.kind = 'gbm'

@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from chargecast.core import (DemandShapeModel, PriceEffect, UnifiedForecaster,
+from chargecast.demand_forecast_model import (DemandShapeModel, PriceEffect, UnifiedForecaster,
                              add_features, cost_floor_ct, pct_to_beta)
 from chargecast.recommend import (flatness_penalty, recommend_prices,
                                   recommend_day, day_margin_eur,

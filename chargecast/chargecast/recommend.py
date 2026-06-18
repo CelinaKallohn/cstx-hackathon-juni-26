@@ -30,7 +30,7 @@ cluster on the mean and its prices converge to the exploit optimum.
 from __future__ import annotations
 import numpy as np
 
-from .core import cost_floor_ct
+from .demand_forecast_model import cost_floor_ct
 
 
 def flatness_penalty(kwh) -> float:
