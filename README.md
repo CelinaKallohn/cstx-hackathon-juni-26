@@ -16,10 +16,34 @@ with a dashboard to visualise the result.
 
 ## Quick start
 
+### 1. Backend (Python)
+
+Work inside a virtual environment so the install stays isolated from your system
+Python:
+
 ```bash
 cd chargecast
-pip install -e .
-python run_simulation.py     # replays the simulated days end to end, regenerating state/
+python3 -m venv .venv          # create the venv (once)
+source .venv/bin/activate      # activate it (Windows: .venv\Scripts\activate)
+pip install -e .               # install chargecast into the venv
+python run_simulation.py       # replay the simulated days end to end, regenerating state/
+                               # and copying outputs into the dashboard's public/ folder
 ```
+
+Re-activate the venv (`source .venv/bin/activate`) in any new shell before running
+the CLI. `deactivate` leaves it.
+
+### 2. Dashboard (Angular)
+
+```bash
+cd dashboard/hackathon-energy
+npm install                    # install dependencies (once)
+ng serve                       # start the dev server at http://localhost:4200
+```
+
+`ng serve` needs the **Angular CLI**. If `ng` isn't found, install it globally
+once with `npm install -g @angular/cli` (see the
+[Angular CLI setup guide](https://angular.dev/tools/cli/setup-local)), or skip the
+global install and run it via the local copy with `npm start`.
 
 See `chargecast/README.md` for the CLI commands (`seed`, `recommend`, `ingest`, `status`)
