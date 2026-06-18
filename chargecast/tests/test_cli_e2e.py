@@ -10,7 +10,7 @@ import pytest
 
 from chargecast.store import Store, train, ref_price
 from chargecast.cli import main
-from chargecast.core import DEFAULT_PRICE_BLOCKS
+from chargecast.demand_forecast_model import DEFAULT_PRICE_BLOCKS
 
 
 def _seed_state(tmp_path, seed_df):

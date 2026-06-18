@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-"""Replay the dummy days through ChargeCast end to end.
+"""Replay the simulated days through ChargeCast end to end.
 
 What it does:
   1. delete the state directory (start clean)
   2. seed from the combined historic 15-minute CSV
   3. predict (recommend) the first new day
-  4. then, consecutively for each dummy day: ingest that day's actuals
+  4. then, consecutively for each simulated day: ingest that day's actuals
      (scores the forecast, retrains) and recommend the following day
 
 Each step calls the real `chargecast` CLI, so the output mirrors a live
@@ -24,9 +24,9 @@ from datetime import datetime, timedelta
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(HERE, 'state')
-DATA = os.path.join(HERE, '..', 'KI-Hackathon Juni2026',
+DATA = os.path.join(HERE, '..', 'data',
                     'collected_and_cleaned', 'collected_cleaned_data.csv')
-DUMMY_DIR = os.path.join(HERE, 'dummy_data')
+SIMULATED_DIR = os.path.join(HERE, 'simulated_data')
 
 
 def run(*args):
@@ -50,15 +50,15 @@ def main():
     # 2. seed from the historic data
     run('seed', '--state', STATE, '--data', DATA)
 
-    # discover the dummy days (date parsed from each filename), sorted
+    # discover the simulated days (date parsed from each filename), sorted
     files = {}
-    for path in glob.glob(os.path.join(DUMMY_DIR, '*.csv')):
+    for path in glob.glob(os.path.join(SIMULATED_DIR, '*.csv')):
         m = re.search(r'(\d{4}-\d{2}-\d{2})', os.path.basename(path))
         if m:
             files[m.group(1)] = path
     dates = sorted(files)
     if not dates:
-        sys.exit(f'no dated dummy CSVs found in {DUMMY_DIR}')
+        sys.exit(f'no dated simulated CSVs found in {SIMULATED_DIR}')
 
     # 3. predict the first new day (before any of its actuals are known)
     run('recommend', '--state', STATE, '--date', dates[0])

@@ -22,7 +22,7 @@ How each day is built:
      these varied-price days is what lets the model learn the true elasticity.
 
 Spot prices are drawn from the historic per-slot spot mean plus noise. Output:
-one file per date, dummy_data/ev_charging_<date>.csv with columns
+one file per date, simulated_data/simulated_data_<date>.csv with columns
 hourstamp, actual_kwh, charged_price_ct, spot_ct (96 rows, 15-minute).
 """
 from __future__ import annotations
@@ -37,13 +37,13 @@ import pandas as pd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, '..'))
-from chargecast.cli import _read_collected                       # noqa: E402
-from chargecast.core import (SLOTS_PER_DAY, INTERVAL_MIN, add_features,      # noqa: E402
-                             UnifiedForecaster, pct_to_beta)
+from chargecast.dataio import read_collected_csv                 # noqa: E402
+from chargecast.demand_forecast_model import (                   # noqa: E402
+    SLOTS_PER_DAY, INTERVAL_MIN, add_features, UnifiedForecaster, pct_to_beta)
 from chargecast.store import Store, train, ref_price             # noqa: E402
 from chargecast.recommend import recommend_day                   # noqa: E402
 
-DATA = os.path.join(HERE, '..', '..', 'KI-Hackathon Juni2026',
+DATA = os.path.join(HERE, '..', '..', 'data',
                     'collected_and_cleaned', 'collected_cleaned_data.csv')
 
 DATES = ['2026-06-01', '2026-06-02', '2026-06-03', '2026-06-04',
@@ -74,7 +74,7 @@ def _seed_model():
     tmp = tempfile.mkdtemp(prefix='chargecast_dummy_')
     try:
         store = Store(tmp)
-        hist = _read_collected(DATA)
+        hist = read_collected_csv(DATA)
         hist['spot_ct'] = hist['spot_ct'].fillna(hist['spot_ct'].median())
         hist['charged_price_ct'] = hist['charged_price_ct'].fillna(ref_price(store.cfg))
         hist['baseline_pred'] = np.nan
@@ -102,7 +102,7 @@ def _true_beta_by_slot(price_effect):
 
 def generate():
     # clear any previously generated days so the directory matches DATES exactly
-    for old in glob.glob(os.path.join(HERE, 'ev_charging_*.csv')):
+    for old in glob.glob(os.path.join(HERE, 'simulated_data_*.csv')):
         os.remove(old)
 
     fc, cfg, spot_by_slot = _seed_model()

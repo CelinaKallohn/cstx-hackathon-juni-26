@@ -7,7 +7,7 @@ but must NOT influence the demand shape.
 import numpy as np
 import pytest
 
-from chargecast.core import (DemandShapeModel, BaselineModel, add_features,
+from chargecast.demand_forecast_model import (DemandShapeModel, BaselineModel, add_features,
                              SHAPE_FEATURES, INPUT_COLUMNS)
 
 # demand-shape output on the 15-minute example fixture (90 days) -- regression anchor.

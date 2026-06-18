@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from chargecast.core import (BlockBeta, PriceEffect, pct_to_beta, beta_to_pct,
+from chargecast.demand_forecast_model import (BlockBeta, PriceEffect, pct_to_beta, beta_to_pct,
                              CONFIDENCE_S0, DEFAULT_PRICE_BLOCKS,
                              validate_price_blocks)
 
