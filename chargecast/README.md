@@ -74,6 +74,16 @@ Replays the simulated days through the real CLI — seed, recommend the first da
 then ingest+recommend each subsequent day, finishing with `status`. Per-day plans
 land in `state/plan_<date>.csv`.
 
+### Feeding the dashboard
+
+`run_simulation.py` copies its outputs into the dashboard's `public/` tree as its
+last step, so the UI shows them automatically (restart `ng serve` or refresh to
+pick up new files). The Angular app serves `public/` at the web root and fetches
+by filename — `/collected_cleaned_data.csv`, `/prediction/plan_<date>.csv`, and
+`/simulation/simulated_data_<date>.csv` — so files just need to land in those
+folders with their names unchanged. To wire up plans from a standalone `recommend`
+run, copy `state/plan_<date>.csv` into `dashboard/hackathon-energy/public/prediction/`.
+
 ## How it works
 
 Everything lives in one unified table where price (`charged_price_ct`) is a normal
