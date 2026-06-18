@@ -198,6 +198,7 @@ export class Auslastung implements AfterViewInit, OnDestroy {
         });
       }
 
+
       // Add real or simulation prices if available
       if ((hasRealData || hasSimulationData) && fullPrices && fullPrices.some(p => p !== null && p !== undefined)) {
         const numericPrices = fullPrices.filter((p): p is number => p !== null && p !== undefined);

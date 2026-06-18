@@ -32,7 +32,6 @@ export class Ausgaben implements AfterViewInit, OnDestroy {
   selectedDateIndex = 0;
 
   private dateSub?: Subscription;
-  private readonly referencePrice = 59; // ct (customer price)
 
   constructor(private readonly dateService: DateSelectionService, private readonly csvService: CsvDataService) {}
 
@@ -86,93 +85,127 @@ export class Ausgaben implements AfterViewInit, OnDestroy {
     return this.dates.length > 0 ? this.dates[this.selectedDateIndex] : null;
   }
 
-   private updateChartForDate(date: string) {
-     const d = this.csvService.getAusgabenDataByDate(date);
-     if (!d || d.times.length === 0) {
-        // Show empty chart if no data available
-        const emptyOption: any = {
-          title: { text: `Ausgaben`, textStyle: { color: '#000' } },
-          legend: { data: ['Steuern & Arbeitspreis', 'Spotpreis'], top: '4%', left: 'center', textStyle: { color: '#000' } },
-          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-          xAxis: { type: 'category', data: [], axisLabel: { color: '#000' } },
-          yAxis: { type: 'value', name: 'Ausgaben (ct)', min: 0, axisLabel: { color: '#000' } },
-          series: [],
-          grid: { left: '10%', right: '10%', top: '14%', bottom: '15%' },
-        };
-        this.chartInstance?.setOption(emptyOption, true);
-        return;
+    private updateChartForDate(date: string) {
+      const d = this.csvService.getAusgabenDataByDate(date);
+      const auslastungData = this.csvService.getAuslastungDataByDate(date);
+
+      if (!d || d.times.length === 0) {
+         // Show empty chart if no data available
+         const emptyOption: any = {
+           title: { text: `Ausgaben`, textStyle: { color: '#000' } },
+           legend: { data: ['Steuern & Arbeitspreis', 'Spotpreis', 'Kundenpreis'], top: '4%', left: 'center', textStyle: { color: '#000' } },
+           tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+           xAxis: { type: 'category', data: [], axisLabel: { color: '#000' } },
+           yAxis: { type: 'value', name: 'Ausgaben (ct)', min: 0, axisLabel: { color: '#000' } },
+           series: [],
+           grid: { left: '10%', right: '10%', top: '14%', bottom: '15%' },
+         };
+         this.chartInstance?.setOption(emptyOption, true);
+         return;
+      }
+
+     // Create full 24-hour time axis (00:00 to 23:00) like in Auslastung
+     const fullTimes = [];
+     for (let h = 0; h < 24; h++) {
+       fullTimes.push(`${String(h).padStart(2, '0')}:00:00`);
      }
 
-    const maxValues = d.taxesAndCharges.map((tax, i) => tax + d.spotPrice[i]);
-    const dayMax = maxValues.length ? Math.max(...maxValues) : 0;
-    const yAxisMax = Math.max(70, dayMax * 1.1);
+     // Map data to the full 24-hour axis
+     const mapDataToFullAxis = (sourceTimes: string[], sourceData: Array<number | any>): Array<number | null> => {
+       const fullData = new Array(24).fill(null);
 
-     const option: any = {
-       title: { text: `Ausgaben`, textStyle: { color: '#000' } },
-       // show legend for the stacked bars (colors)
-       legend: { data: ['Steuern & Arbeitspreis', 'Spotpreis'], top: '4%', left: 'center', textStyle: { color: '#000' } },
-       tooltip: {
-         trigger: 'axis',
-         axisPointer: { type: 'shadow' },
-         formatter: (params: any) => {
-           if (!Array.isArray(params)) params = [params];
-           let result = params[0].axisValue + '<br/>';
-           for (const p of params) {
-             if (p.seriesName === 'Steuern & Arbeitspreis') {
-               result += `${p.seriesName}: ${p.value.toFixed(2)}ct<br/>`;
-             } else if (p.seriesName === 'Spotpreis') {
-               result += `${p.seriesName}: ${p.value.toFixed(2)}ct<br/>`;
-             }
-           }
-           return result;
-         },
-       },
-       xAxis: {
-         type: 'category',
-         data: d.times,
-         boundaryGap: true,
-         // axis name removed: keep tick labels but no axis title
-         axisLabel: {
-           interval: 7,
-           color: '#000',
-           formatter: (value: string) => {
-             const parts = value.split(':');
-             return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : value;
-           },
-         },
-       },
-       yAxis: { type: 'value', name: 'Ausgaben (ct)', min: 0, max: yAxisMax, axisLabel: { color: '#000' } },
-       series: [
-         {
-           name: 'Steuern & Arbeitspreis',
-           type: 'bar',
-           data: d.taxesAndCharges,
-           stack: 'total',
-           itemStyle: { color: '#5470C6', opacity: 0.5 },
-         },
-         {
-           name: 'Spotpreis',
-           type: 'bar',
-           data: d.spotPrice,
-           stack: 'total',
-           itemStyle: { color: '#ff9100' },
-           markLine: {
-             data: [
-               {
-                 name: 'Kundenpreis (59ct)',
-                 yAxis: this.referencePrice,
-                 lineStyle: { color: '#000', type: 'solid', width: 2 },
-                 label: { position: 'insideEndTop', offset: [-10, -5] },
-               },
-             ],
-           },
-         },
-       ],
-       // leave space at the top for the legend
-       grid: { left: '10%', right: '10%', top: '14%', bottom: '15%' },
+       for (let i = 0; i < sourceTimes.length; i++) {
+         const time = sourceTimes[i];
+         const hour = parseInt(time.split(':')[0]);
+         if (hour >= 0 && hour < 24) {
+           fullData[hour] = sourceData[i];
+         }
+       }
+
+       return fullData;
      };
-    this.chartInstance?.setOption(option);
-  }
+
+     // Map ausgaben and price data to the full 24-hour axis
+     const fullTaxesAndCharges = mapDataToFullAxis(d.times, d.taxesAndCharges);
+     const fullSpotPrice = mapDataToFullAxis(d.times, d.spotPrice);
+
+     // Get prices from Auslastung data (same as displayed in Auslastung component)
+     const fullPrices = mapDataToFullAxis(auslastungData.times, auslastungData.prices || []);
+
+     const maxValues = fullTaxesAndCharges.map((tax, i) => {
+       const totalBar = (tax !== null ? tax : 0) + (fullSpotPrice[i] !== null ? fullSpotPrice[i] : 0);
+       return totalBar;
+     });
+     const dayMax = maxValues.length ? Math.max(...maxValues.filter(v => v !== null)) : 0;
+     const yAxisMax = Math.max(70, dayMax * 1.1);
+
+      const option: any = {
+        title: { text: `Ausgaben`, textStyle: { color: '#000' } },
+        // show legend for the stacked bars (colors) and price line
+        legend: { data: ['Steuern & Arbeitspreis', 'Spotpreis', 'Kundenpreis'], top: '4%', left: 'center', textStyle: { color: '#000' } },
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'shadow' },
+          formatter: (params: any) => {
+            if (!Array.isArray(params)) params = [params];
+            let result = params[0].axisValue + '<br/>';
+            for (const p of params) {
+              if (p.seriesName === 'Steuern & Arbeitspreis') {
+                result += `${p.seriesName}: ${p.value.toFixed(2)}ct<br/>`;
+              } else if (p.seriesName === 'Spotpreis') {
+                result += `${p.seriesName}: ${p.value.toFixed(2)}ct<br/>`;
+              } else if (p.seriesName === 'Kundenpreis') {
+                result += `${p.seriesName}: ${p.value.toFixed(2)}ct<br/>`;
+              }
+            }
+            return result;
+          },
+        },
+        xAxis: {
+          type: 'category',
+          data: fullTimes,
+          boundaryGap: true,
+          // axis name removed: keep tick labels but no axis title
+          axisLabel: {
+            interval: 2, // Show every 3rd hour
+            color: '#000',
+            formatter: (value: string) => {
+              const parts = value.split(':');
+              return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : value;
+            },
+          },
+        },
+        yAxis: { type: 'value', name: 'Ausgaben (ct)', min: 0, max: yAxisMax, axisLabel: { color: '#000' } },
+        series: [
+          {
+            name: 'Steuern & Arbeitspreis',
+            type: 'bar',
+            data: fullTaxesAndCharges,
+            stack: 'total',
+            itemStyle: { color: '#5470C6', opacity: 0.5 },
+          },
+          {
+            name: 'Spotpreis',
+            type: 'bar',
+            data: fullSpotPrice,
+            stack: 'total',
+            itemStyle: { color: '#ff9100' },
+          },
+          {
+            name: 'Kundenpreis',
+            type: 'line',
+            data: fullPrices,
+            smooth: false,
+            showSymbol: false,
+            lineStyle: { width: 2, color: '#c23531' },
+            itemStyle: { color: '#c23531' },
+          },
+        ],
+        // leave space at the top for the legend
+        grid: { left: '10%', right: '10%', top: '14%', bottom: '15%' },
+      };
+     this.chartInstance?.setOption(option);
+   }
 
   private readonly onResize = () => {
     if (this.chartInstance) this.chartInstance.resize();

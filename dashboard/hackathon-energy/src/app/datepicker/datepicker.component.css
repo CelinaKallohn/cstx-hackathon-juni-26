@@ -17,6 +17,17 @@
   background: #e0e0e0;
 }
 
+.date-controls button:disabled {
+  background: #e8e8e8;
+  color: #aaa;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.date-controls button:disabled:hover {
+  background: #e8e8e8;
+}
+
 .date-controls input {
   padding: 0.4rem 0.6rem;
   font-size: 1rem;

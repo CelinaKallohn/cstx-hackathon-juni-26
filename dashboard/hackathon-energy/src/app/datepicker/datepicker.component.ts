@@ -15,6 +15,9 @@ export class Datepicker {
   onPrev() { this.ds.prev(); }
   onNext() { this.ds.next(); }
   onDateChange(value: string) { this.ds.setDateIso(value); }
+
+  get canPrev$() { return this.ds.canPrev$; }
+  get canNext$() { return this.ds.canNext$; }
 }
 
 

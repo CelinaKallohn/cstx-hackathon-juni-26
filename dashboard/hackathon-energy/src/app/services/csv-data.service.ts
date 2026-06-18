@@ -11,21 +11,47 @@ export class CsvDataService {
   private simulationByDate: Record<string, Array<Record<string, string>>> = {};
 
   // Public getter for dates (DD.MM.YYYY)
+  // Include dates from main data, simulation, and prediction
   public getAvailableDates(): string[] {
-    return this.dates.slice();
+    const allDates = new Set<string>(this.dates);
+
+    // Add dates from simulation data
+    for (const isoDate of Object.keys(this.simulationByDate)) {
+      if (this.simulationByDate[isoDate].length > 0) {
+        const ddmmyyyy = this.convertIsoBddmmyyyy(isoDate);
+        if (ddmmyyyy) allDates.add(ddmmyyyy);
+      }
+    }
+
+    // Add dates from prediction data
+    for (const isoDate of Object.keys(this.predictionByDate)) {
+      if (this.predictionByDate[isoDate].length > 0) {
+        const ddmmyyyy = this.convertIsoBddmmyyyy(isoDate);
+        if (ddmmyyyy) allDates.add(ddmmyyyy);
+      }
+    }
+
+    // Sort and return
+    return Array.from(allDates).sort((a, b) => {
+      const pa = a.split('.').map(Number);
+      const pb = b.split('.').map(Number);
+      const da = new Date(pa[2], pa[1] - 1, pa[0]);
+      const db = new Date(pb[2], pb[1] - 1, pb[0]);
+      return da.getTime() - db.getTime();
+    });
   }
 
-  // Ensure CSV loaded and parsed
-  public async ensureLoaded(): Promise<void> {
-    if (this.loaded) return;
-    const resp = await fetch('/collected_cleaned_data.csv');
-    if (!resp.ok) throw new Error('Konnte CSV nicht laden');
-    const txt = await resp.text();
-    this.parseCSVText(txt);
-    await this.loadPredictionData();
-    await this.loadSimulationData();
-    this.loaded = true;
-  }
+   // Ensure CSV loaded and parsed
+   public async ensureLoaded(): Promise<void> {
+     if (this.loaded) return;
+     const resp = await fetch('/collected_cleaned_data.csv');
+     if (!resp.ok) throw new Error('Konnte CSV nicht laden');
+     const txt = await resp.text();
+     this.parseCSVText(txt);
+     await this.loadPredictionData();
+     await this.loadSimulationData();
+     this.loaded = true;
+   }
 
   // Return raw rows (array of objects keyed by normalized header)
   public getRowsForDate(date: string): Array<Record<string, string>> {
@@ -55,33 +81,81 @@ export class CsvDataService {
   }
 
   // Ausgaben: returns DayData used by Ausgaben component
-  public getAusgabenDataByDate(date: string): { times: string[]; taxesAndCharges: number[]; workPrice: number[]; spotPrice: number[] } {
-    const rows = this.getRowsForDate(date);
+  // Priority: use collected data if available, otherwise use simulation data
+  public getAusgabenDataByDate(date: string): { times: string[]; taxesAndCharges: number[]; workPrice: number[]; spotPrice: number[]; customerPrice: Array<number | null> } {
     const times: string[] = [];
     const taxesAndCharges: number[] = [];
     const workPrice: number[] = [];
     const spotPrice: number[] = [];
-    if (rows.length === 0) return { times, taxesAndCharges, workPrice, spotPrice };
+    const customerPrice: Array<number | null> = [];
 
-    const headerKeys = Object.keys(rows[0]);
-    const timeKey = headerKeys.find(h => h.includes('uhrzeit')) ?? headerKeys.find(h => h.includes('time'));
-    const spotKey = headerKeys.find(h => h.includes('spotmarktpreis')) ?? headerKeys.find(h => h.includes('spotpreis')) ?? headerKeys.find(h => h.includes('spot'));
-    const workKey = headerKeys.find(h => h.includes('arbeitspreis')) ?? headerKeys.find(h => h.includes('arbeit'));
-    const taxKey = headerKeys.find(h => h.includes('steuern')) ?? headerKeys.find(h => h.includes('abgaben')) ?? headerKeys.find(h => h.includes('steuer'));
+    // Try to get data from collected data first
+    const rows = this.getRowsForDate(date);
+    if (rows.length > 0) {
+      const headerKeys = Object.keys(rows[0]);
+      const timeKey = headerKeys.find(h => h.includes('uhrzeit')) ?? headerKeys.find(h => h.includes('time'));
+      const spotKey = headerKeys.find(h => h.includes('spotmarktpreis')) ?? headerKeys.find(h => h.includes('spotpreis')) ?? headerKeys.find(h => h.includes('spot'));
+      const workKey = headerKeys.find(h => h.includes('arbeitspreis')) ?? headerKeys.find(h => h.includes('arbeit'));
+      const taxKey = headerKeys.find(h => h.includes('steuern')) ?? headerKeys.find(h => h.includes('abgaben')) ?? headerKeys.find(h => h.includes('steuer'));
+      const customerPriceKey = headerKeys.find(h => h.includes('endkundenpreis')) ?? headerKeys.find(h => h.includes('kundenpreis'));
 
-    for (const r of rows) {
-      const time = (timeKey && r[timeKey]) || '';
-      const spot = spotKey ? this.parseNumber(r[spotKey]) : null;
-      const work = workKey ? this.parseNumber(r[workKey]) : null;
-      const tax = taxKey ? this.parseNumber(r[taxKey]) : null;
-      if (typeof spot === 'number' && typeof work === 'number' && typeof tax === 'number') {
-        times.push(time);
-        taxesAndCharges.push(tax + work);
-        workPrice.push(0);
-        spotPrice.push(spot);
+      for (const r of rows) {
+         const time = (timeKey && r[timeKey]) || '';
+         const spot = spotKey ? this.parseNumber(r[spotKey]) : null;
+         const work = workKey ? this.parseNumber(r[workKey]) : null;
+         const tax = taxKey ? this.parseNumber(r[taxKey]) : null;
+         const custPrice = customerPriceKey ? this.parseNumber(r[customerPriceKey]) : null;
+         if (typeof spot === 'number' && typeof work === 'number' && typeof tax === 'number') {
+           times.push(time);
+           taxesAndCharges.push(tax + work);
+           workPrice.push(0);
+           spotPrice.push(spot);
+           customerPrice.push(custPrice);
+         }
+      }
+      return { times, taxesAndCharges, workPrice, spotPrice, customerPrice };
+    }
+
+    // Fall back to simulation data if no collected data
+    let isoDate = date;
+    if (date.includes('.')) {
+      const parts = date.split('.');
+      if (parts.length === 3) {
+        isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
       }
     }
-    return { times, taxesAndCharges, workPrice, spotPrice };
+
+    const simRows = this.simulationByDate[isoDate] || [];
+    if (simRows.length > 0) {
+      const headerKeys = Object.keys(simRows[0]);
+      const timeKey = headerKeys.find(h => h.toLowerCase().includes('hourstamp')) ??
+                      headerKeys.find(h => h.toLowerCase().includes('time'));
+      const spotKey = headerKeys.find(h => h.toLowerCase().includes('spot_ct')) ??
+                      headerKeys.find(h => h.toLowerCase().includes('spot'));
+      const chargedPriceKey = headerKeys.find(h => h.toLowerCase().includes('charged_price_ct')) ??
+                             headerKeys.find(h => h.toLowerCase().includes('price'));
+
+      const FIXED_TAXES_AND_CHARGES = 14.47; // ct
+
+      for (const r of simRows) {
+        let time = timeKey ? r[timeKey] : '';
+        // Extract HH:MM:SS from hourstamp if available
+        if (time && time.includes(' ')) {
+          time = time.split(' ')[1]; // Get time part after space
+        }
+        const spot = spotKey ? this.parseNumber(r[spotKey]) : null;
+        const chargedPrice = chargedPriceKey ? this.parseNumber(r[chargedPriceKey]) : null;
+        if (typeof spot === 'number') {
+          times.push(time || '');
+          taxesAndCharges.push(FIXED_TAXES_AND_CHARGES);
+          workPrice.push(0);
+          spotPrice.push(spot);
+          customerPrice.push(chargedPrice);
+        }
+      }
+    }
+
+    return { times, taxesAndCharges, workPrice, spotPrice, customerPrice };
   }
 
   // Gewinn per timestamp (values converted to €)
@@ -463,44 +537,113 @@ export class CsvDataService {
     return { times, prices };
   }
 
-  // Get spot prices from simulation data
-  public getSpotSimulationDataByDate(date: string): { times: string[]; prices: Array<number | null> } {
-    // Convert DD.MM.YYYY to YYYY-MM-DD if needed
-    let isoDate = date;
-    if (date.includes('.')) {
-      const parts = date.split('.');
-      if (parts.length === 3) {
-        isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-      }
-    }
+   // Get spot prices from simulation data
+   public getSpotSimulationDataByDate(date: string): { times: string[]; prices: Array<number | null> } {
+     // Convert DD.MM.YYYY to YYYY-MM-DD if needed
+     let isoDate = date;
+     if (date.includes('.')) {
+       const parts = date.split('.');
+       if (parts.length === 3) {
+         isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+       }
+     }
 
-    const rows = this.simulationByDate[isoDate] || [];
-    const times: string[] = [];
-    const prices: Array<number | null> = [];
+     const rows = this.simulationByDate[isoDate] || [];
+     const times: string[] = [];
+     const prices: Array<number | null> = [];
 
-    if (rows.length === 0) {
-      return { times, prices };
-    }
+     if (rows.length === 0) {
+       return { times, prices };
+     }
 
-    const headerKeys = Object.keys(rows[0]);
+     const headerKeys = Object.keys(rows[0]);
 
-    const timeKey = headerKeys.find(h => h.toLowerCase().includes('hourstamp')) ??
-                    headerKeys.find(h => h.toLowerCase().includes('time'));
-    const spotKey = headerKeys.find(h => h.toLowerCase().includes('spot_ct')) ??
-                    headerKeys.find(h => h.toLowerCase().includes('spot'));
+     const timeKey = headerKeys.find(h => h.toLowerCase().includes('hourstamp')) ??
+                     headerKeys.find(h => h.toLowerCase().includes('time'));
+     const spotKey = headerKeys.find(h => h.toLowerCase().includes('spot_ct')) ??
+                     headerKeys.find(h => h.toLowerCase().includes('spot'));
 
-    for (const r of rows) {
-      let time = timeKey ? r[timeKey] : '';
-      // Extract HH:MM:SS from hourstamp if available
-      if (time && time.includes(' ')) {
-        time = time.split(' ')[1]; // Get time part after space
-      }
-      const price = spotKey ? this.parseNumber(r[spotKey]) : null;
-      times.push(time || '');
-      prices.push(price === null ? null : price);
-    }
-    return { times, prices };
-  }
+     for (const r of rows) {
+       let time = timeKey ? r[timeKey] : '';
+       // Extract HH:MM:SS from hourstamp if available
+       if (time && time.includes(' ')) {
+         time = time.split(' ')[1]; // Get time part after space
+       }
+       const price = spotKey ? this.parseNumber(r[spotKey]) : null;
+       times.push(time || '');
+       prices.push(price === null ? null : price);
+     }
+     return { times, prices };
+   }
+
+    // Get the reference price (Endkundenpreis or charged_price_ct) for a date
+   // Priority: use endkundenpreis from collected data, fallback to charged_price_ct from simulation
+   public getReferencePriceByDate(date: string): number {
+     // Try to get endkundenpreis from collected data first
+     const rows = this.getRowsForDate(date);
+
+     if (rows.length > 0) {
+       const headerKeys = Object.keys(rows[0]);
+
+       const priceKey = headerKeys.find(h => h.toLowerCase().includes('endkundenpreis') || h.toLowerCase().includes('kundenpreis'));
+       console.log(`Searching for endkundenpreis/kundenpreis, found key: ${priceKey}`);
+
+       if (priceKey) {
+         const prices: number[] = [];
+         for (const r of rows) {
+           const price = this.parseNumber(r[priceKey]);
+           if (typeof price === 'number') {
+             prices.push(price);
+           }
+         }
+         if (prices.length > 0) {
+           // Return the average endkundenpreis
+           const avgPrice = prices.reduce((sum, p) => sum + p, 0) / prices.length;
+           console.log(`Reference price from collected data (${date}): ${avgPrice}ct (from ${prices.length} values)`);
+           return avgPrice;
+         }
+       }
+     }
+
+     // Fall back to charged_price_ct from simulation data
+     let isoDate = date;
+     if (date.includes('.')) {
+       const parts = date.split('.');
+       if (parts.length === 3) {
+         isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+       }
+     }
+
+     const simRows = this.simulationByDate[isoDate] || [];
+     console.log(`Checking simulation data for ${isoDate}: found ${simRows.length} rows`);
+
+     if (simRows.length > 0) {
+       const headerKeys = Object.keys(simRows[0]);
+       const priceKey = headerKeys.find(h => h.toLowerCase().includes('charged_price_ct')) ??
+                        headerKeys.find(h => h.toLowerCase().includes('price'));
+       console.log(`Searching for charged_price_ct, found key: ${priceKey}`);
+
+       if (priceKey) {
+         const prices: number[] = [];
+         for (const r of simRows) {
+           const price = this.parseNumber(r[priceKey]);
+           if (typeof price === 'number') {
+             prices.push(price);
+           }
+         }
+         if (prices.length > 0) {
+           // Return the average charged_price_ct
+           const avgPrice = prices.reduce((sum, p) => sum + p, 0) / prices.length;
+           console.log(`Reference price from simulation (${date}): ${avgPrice}ct (from ${prices.length} values)`);
+           return avgPrice;
+         }
+       }
+     }
+
+     // Default fallback
+     console.log(`Reference price using default: 59ct`);
+     return 59;
+   }
 
   // Get profit from prediction data
   // Berechnung: forecast_kwh * (price_ct - Steuern(6.961) - spot_ct - Arbeitspreis(7.48))
@@ -550,7 +693,6 @@ export class CsvDataService {
       if (forecast !== null && price !== null && spot !== null) {
         gainValue = forecast * (price - TAXES - spot - WORK_PRICE) / 100; // Convert to €
       }
-      console.log(`Prediction profit for time ${time}: forecast=${forecast}, price=${price}, spot=${spot} => gain=${gainValue}`);
 
       times.push(time || '');
       profit.push(gainValue);
@@ -613,47 +755,45 @@ export class CsvDataService {
     return { times, profit };
   }
 
-  // Calculate daily gain from collected data or simulation data
-  // If simulation data exists, use it; otherwise use main collected data
-  // Berechnung: ProfilwertKwh * (Endkundenpreis - Steuern - Spotmarktpreis - Arbeitspreis)
-  public getDailyGain(date: string): number {
-    // Convert DD.MM.YYYY to YYYY-MM-DD if needed
-    let isoDate = date;
-    if (date.includes('.')) {
-      const parts = date.split('.');
-      if (parts.length === 3) {
-        isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+    // Calculate daily gain from collected data or simulation data
+    // Priority: simulation > main collected data
+    // Only uses actual/simulated data, NOT predictions
+    // Berechnung: ProfilwertKwh * (Endkundenpreis - Steuern - Spotmarktpreis - Arbeitspreis)
+    public getDailyGain(date: string): number {
+      // Convert DD.MM.YYYY to YYYY-MM-DD if needed
+      let isoDate = date;
+      if (date.includes('.')) {
+        const parts = date.split('.');
+        if (parts.length === 3) {
+          isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        }
       }
-    }
 
-    // First try to get simulation data
-    const simData = this.getProfitSimulationDataByDate(date);
-    if (simData.profit.length > 0) {
-      const gains = simData.profit.filter((v): v is number => v !== null && v !== undefined);
-      if (gains.length > 0) {
-        return gains.reduce((sum, val) => sum + val, 0);
+      // First try to get simulation data
+      const simData = this.getProfitSimulationDataByDate(date);
+      if (simData.profit.length > 0) {
+        const gains = simData.profit.filter((v): v is number => v !== null && v !== undefined);
+        if (gains.length > 0) {
+          return gains.reduce((sum, val) => sum + val, 0);
+        }
       }
-    }
 
-    // Fall back to main collected data
-    const mainData = this.getGewinnDataByDate(date);
-    console.log("mainData");
-    console.log(mainData);
-    if (mainData.profit.length > 0) {
-      const gains = mainData.profit.filter((v): v is number => v !== null && v !== undefined);
-      if (gains.length > 0) {
-        return gains.reduce((sum, val) => sum + val, 0);
+      // Fall back to main collected data
+      const mainData = this.getGewinnDataByDate(date);
+      if (mainData.profit.length > 0) {
+        const gains = mainData.profit.filter((v): v is number => v !== null && v !== undefined);
+        if (gains.length > 0) {
+          return gains.reduce((sum, val) => sum + val, 0);
+        }
       }
-    }
 
-    return 0;
-  }
+      return 0;
+    }
 
   // Calculate predicted daily gain from prediction data
   // Berechnung: forecast_kwh * (price_ct - Steuern(6.961) - spot_ct - Arbeitspreis(7.48))
   public getPredictedDailyGain(date: string): number {
     const predData = this.getProfitPredictionDataByDate(date);
-    console.log(predData);
     if (predData.profit.length > 0) {
       const gains = predData.profit.filter((v): v is number => v !== null && v !== undefined);
       if (gains.length > 0) {
@@ -701,12 +841,19 @@ export class CsvDataService {
     });
   }
 
-  private normalizeDate(raw: string): string | null {
-    if (!raw) return null;
-    const parts = raw.trim().split('.');
-    if (parts.length !== 3) return null;
-    return `${parts[0].padStart(2, '0')}.${parts[1].padStart(2, '0')}.${parts[2]}`;
-  }
+   private normalizeDate(raw: string): string | null {
+     if (!raw) return null;
+     const parts = raw.trim().split('.');
+     if (parts.length !== 3) return null;
+     return `${parts[0].padStart(2, '0')}.${parts[1].padStart(2, '0')}.${parts[2]}`;
+   }
+
+   // Convert YYYY-MM-DD to DD.MM.YYYY format
+   private convertIsoBddmmyyyy(isoDate: string): string | null {
+     const parts = isoDate.split('-');
+     if (parts.length !== 3) return null;
+     return `${parts[2]}.${parts[1]}.${parts[0]}`;
+   }
 
   private parseNumber(s: string | undefined | null): number | null {
     if (s === undefined || s === null) return null;

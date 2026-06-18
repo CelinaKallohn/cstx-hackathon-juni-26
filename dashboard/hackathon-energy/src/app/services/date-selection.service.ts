@@ -6,68 +6,73 @@ export class DateSelectionService {
   private datesSubject = new BehaviorSubject<string[]>([]); // DD.MM.YYYY values
   private indexSubject = new BehaviorSubject<number>(0);
   private dateIsoSubject = new BehaviorSubject<string>(''); // YYYY-MM-DD
+  private canPrevSubject = new BehaviorSubject<boolean>(false);
+  private canNextSubject = new BehaviorSubject<boolean>(false);
 
   readonly dates$ = this.datesSubject.asObservable();
   readonly index$ = this.indexSubject.asObservable();
   readonly date$ = this.dateIsoSubject.asObservable();
+  readonly canPrev$ = this.canPrevSubject.asObservable();
+  readonly canNext$ = this.canNextSubject.asObservable();
 
-  setAvailableDates(dates: string[]) {
-    this.datesSubject.next(dates);
-    if (dates.length > 0) {
-      const idx = Math.max(0, dates.length - 1);
-      this.setSelectedIndex(idx);
-    } else {
-      this.indexSubject.next(0);
-      this.dateIsoSubject.next('');
-    }
-  }
+   setAvailableDates(dates: string[]) {
+     this.datesSubject.next(dates);
+     if (dates.length > 0) {
+       const idx = Math.max(0, dates.length - 1);
+       this.setSelectedIndex(idx);
+     } else {
+       this.indexSubject.next(0);
+       this.dateIsoSubject.next('');
+       this.updateNavigationState();
+     }
+   }
 
-  setSelectedIndex(i: number) {
-    const dates = this.datesSubject.getValue();
-    const idx = Math.max(0, Math.min(i, Math.max(0, dates.length - 1)));
-    this.indexSubject.next(idx);
-    const dd = dates[idx];
-    if (dd) this.dateIsoSubject.next(this.toIso(dd));
-  }
+   setSelectedIndex(i: number) {
+     const dates = this.datesSubject.getValue();
+     const idx = Math.max(0, Math.min(i, Math.max(0, dates.length - 1)));
+     this.indexSubject.next(idx);
+     const dd = dates[idx];
+     if (dd) this.dateIsoSubject.next(this.toIso(dd));
+     this.updateNavigationState();
+   }
 
-  setDateIso(iso: string) {
-    // try to find index for the iso in known dates; otherwise just set iso
-    const dates = this.datesSubject.getValue();
-    const dd = this.fromIso(iso);
-    const idx = dates.indexOf(dd);
-    if (idx !== -1) {
-      this.setSelectedIndex(idx);
-    } else {
-      this.dateIsoSubject.next(iso);
-    }
-  }
+   setDateIso(iso: string) {
+     // try to find index for the iso in known dates; otherwise just set iso
+     const dates = this.datesSubject.getValue();
+     const dd = this.fromIso(iso);
+     const idx = dates.indexOf(dd);
+     if (idx !== -1) {
+       this.setSelectedIndex(idx);
+     } else {
+       this.dateIsoSubject.next(iso);
+       this.updateNavigationState();
+     }
+   }
 
    prev() {
-     const currentIso = this.dateIsoSubject.getValue();
-     if (!currentIso) return;
-     const prevIso = this.addDaysIso(currentIso, -1);
-     this.dateIsoSubject.next(prevIso);
+      const currentIdx = this.indexSubject.getValue();
+      const dates = this.datesSubject.getValue();
+      if (dates.length === 0) return;
+      const newIdx = Math.max(0, currentIdx - 1);
+      this.setSelectedIndex(newIdx);
+    }
+
+    next() {
+      const currentIdx = this.indexSubject.getValue();
+      const dates = this.datesSubject.getValue();
+      if (dates.length === 0) return;
+      const newIdx = Math.min(dates.length - 1, currentIdx + 1);
+      this.setSelectedIndex(newIdx);
+    }
+
+   private updateNavigationState() {
+     const idx = this.indexSubject.getValue();
+     const dates = this.datesSubject.getValue();
+     this.canPrevSubject.next(idx > 0);
+     this.canNextSubject.next(idx < dates.length - 1);
    }
 
-   next() {
-     const currentIso = this.dateIsoSubject.getValue();
-     if (!currentIso) return;
-     const nextIso = this.addDaysIso(currentIso, 1);
-     this.dateIsoSubject.next(nextIso);
-   }
-
-  private addDaysIso(iso: string, delta: number): string {
-    const p = iso.split('-');
-    if (p.length !== 3) return iso;
-    const dt = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
-    dt.setDate(dt.getDate() + delta);
-    const y = dt.getFullYear();
-    const m = String(dt.getMonth() + 1).padStart(2, '0');
-    const d = String(dt.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  }
-
-  private toIso(ddmmyyyy: string): string {
+   private toIso(ddmmyyyy: string): string {
     const parts = ddmmyyyy.split('.');
     if (parts.length !== 3) return '';
     return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
