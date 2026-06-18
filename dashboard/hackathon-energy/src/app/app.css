@@ -5,7 +5,7 @@
      caused lower charts to be clipped. */
   min-height: 100vh;
   overflow-y: auto;
-  background-color: #ffffff;
+  background-color: #fbfbfb;
   color: #000000;
 }
 
@@ -14,11 +14,10 @@
   top: 0;
   left: 0;
   right: 0;
-  background: linear-gradient(135deg, #1a3a52 0%, #2d5a7b 100%);
+  background: linear-gradient(135deg, #1a3a52 -50%, #010a1d 100%);
   color: white;
   z-index: 100;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  padding: 8px 20px;
   height: 56px;
   display: flex;
   align-items: center;
@@ -27,6 +26,7 @@
 }
 
 .header-content {
+  padding: 8px 20px;
   display: flex;
   gap: 20px;
   align-items: center;
@@ -46,6 +46,19 @@
   opacity: 0.85;
   font-weight: 300;
   letter-spacing: 0.3px;
+}
+
+.header-image {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-left: auto;
+  height: 100%;
+}
+
+.header-image img {
+  height: 56px;
+  object-fit: contain;
 }
 
 app-datepicker {
