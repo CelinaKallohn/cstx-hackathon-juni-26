@@ -3,6 +3,9 @@
 Self-improving daily demand forecasting and dynamic pricing for an EV charging hub,
 with a dashboard to visualise the result.
 
+> For an honest look at the problem, the prototype's maturity, our use of AI, how
+> we validated it, and what's next, see [`SELFASSESSMENT.md`](SELFASSESSMENT.md).
+
 ## Repository layout
 
 | Path          | What it is |
@@ -20,4 +23,3 @@ python run_simulation.py     # replays the simulated days end to end, regenerati
 ```
 
 See `chargecast/README.md` for the CLI commands (`seed`, `recommend`, `ingest`, `status`)
-and `chargecast/HANDOFF.md` for the design rationale.
