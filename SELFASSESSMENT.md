@@ -14,9 +14,24 @@ that recommends a per-15-minute price for the day ahead that **smooths demand**
 **improves itself** as real days accumulate, with no manual retuning. The same
 commands should work on day 1 and on day 500.
 
+**Why we built it this way.** The customer's stated *want* is dynamic pricing
+driven by AI/LLM. With the data available today, that is simply **not possible**,
+and we'd rather say so than oversell:
+
+- There is **no varied-price history** to learn real price sensitivity from, so
+  any AI/LLM that claims to "optimise" prices on this data is mistaken or
+  overselling.
+- Instead, the tool **guides the customer toward their want and earns its way
+  there**: honest priors, safe **cost-floored** recommendations from day one.
+- It **deliberately explores** to generate the varied-price evidence that real
+  elasticity learning requires.
+- Every day it ingests **narrows its uncertainty** — so the system grows into
+  genuinely data-driven dynamic pricing instead of pretending it already is.
+
 ## 2. Maturity of this prototype
 
-Prototype-grade, and we're explicit about that. What works:
+Prototype-grade.
+What works:
 
 - A clean daily loop as a CLI — `seed` → `recommend` → `ingest` → `status` —
   with a learning model behind it (v2.2.0).
