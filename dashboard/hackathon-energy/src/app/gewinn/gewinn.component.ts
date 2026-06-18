@@ -97,24 +97,25 @@ export class Gewinn implements AfterViewInit, OnDestroy {
        const hasSimulationData = !hasRealData && simulationData && simulationData.profit.length > 0;
        const hasPredictionData = predictionData && predictionData.profit.length > 0;
 
-      if (!hasRealData && !hasSimulationData && !hasPredictionData) {
-        // Show empty chart if no data available
-        const emptyOption: any = {
-          title: { text: `Gewinn` },
-          legend: {
-            data: ['Gewinn', 'Verlust', 'Vorhersage'],
-            top: '4%',
-            left: 'center',
-          },
-          tooltip: { trigger: 'axis' },
-          xAxis: { type: 'category', data: [] },
-          yAxis: { type: 'value', name: 'Gewinn (€)' },
-          series: [],
-          grid: { left: '10%', right: '10%', bottom: '15%' },
-        };
-        this.chartInstance?.setOption(emptyOption, true);
-        return;
-      }
+       if (!hasRealData && !hasSimulationData && !hasPredictionData) {
+         // Show empty chart if no data available
+         const emptyOption: any = {
+           title: { text: `Gewinn`, textStyle: { color: '#000' } },
+           legend: {
+             data: ['Gewinn', 'Verlust', 'Vorhersage'],
+             top: '4%',
+             left: 'center',
+             textStyle: { color: '#000' },
+           },
+           tooltip: { trigger: 'axis' },
+           xAxis: { type: 'category', data: [], axisLabel: { color: '#000' } },
+           yAxis: { type: 'value', name: 'Gewinn (€)', axisLabel: { color: '#000' } },
+           series: [],
+           grid: { left: '10%', right: '10%', bottom: '15%' },
+         };
+         this.chartInstance?.setOption(emptyOption, true);
+         return;
+       }
 
       // Use real data, or simulation data if not available
       const dataSource = hasRealData ? d : (hasSimulationData ? { times: simulationData.times, profit: simulationData.profit } : null);
@@ -167,44 +168,46 @@ export class Gewinn implements AfterViewInit, OnDestroy {
      const positiveData = fullProfit.map(v => (v !== null && v !== undefined && v >= 0) ? v : undefined);
      const negativeData = fullProfit.map(v => (v !== null && v !== undefined && v < 0) ? v : undefined);
 
-     const option: any = {
-       title: { text: `Gewinn` },
-       legend: {
-         data: ['Gewinn', 'Verlust', 'Vorhersage'],
-         top: '4%',
-         left: 'center',
-       },
-       tooltip: {
-         trigger: 'axis',
-         formatter: (params: any) => {
-           if (!Array.isArray(params)) params = [params];
-           let result = params[0].axisValue + '<br/>';
-           for (const p of params) {
-             const value = p.value;
-             if (value !== undefined && value !== null) {
-               const label = value >= 0 ? `✓ ${p.seriesName}: €${Math.abs(value).toFixed(2)}` : `✗ ${p.seriesName}: €${Math.abs(value).toFixed(2)}`;
-               result += label + '<br/>';
-             }
-           }
-           return result;
-         },
-       },
-       xAxis: {
-         type: 'category',
-         data: fullTimes,
-         boundaryGap: false,
-         axisLabel: {
-           interval: 2,
-           formatter: (value: string) => {
-             const parts = value.split(':');
-             return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : value;
-           },
-         },
-       },
-       yAxis: { type: 'value', name: 'Gewinn (€)', min: yMin, max: yMax },
-       series: [],
-       grid: { left: '10%', right: '10%', bottom: '15%' },
-     };
+      const option: any = {
+        title: { text: `Gewinn`, textStyle: { color: '#000' } },
+        legend: {
+          data: ['Gewinn', 'Verlust', 'Vorhersage'],
+          top: '4%',
+          left: 'center',
+          textStyle: { color: '#000' },
+        },
+        tooltip: {
+          trigger: 'axis',
+          formatter: (params: any) => {
+            if (!Array.isArray(params)) params = [params];
+            let result = params[0].axisValue + '<br/>';
+            for (const p of params) {
+              const value = p.value;
+              if (value !== undefined && value !== null) {
+                const label = value >= 0 ? `✓ ${p.seriesName}: €${Math.abs(value).toFixed(2)}` : `✗ ${p.seriesName}: €${Math.abs(value).toFixed(2)}`;
+                result += label + '<br/>';
+              }
+            }
+            return result;
+          },
+        },
+        xAxis: {
+          type: 'category',
+          data: fullTimes,
+          boundaryGap: false,
+          axisLabel: {
+            interval: 2,
+            color: '#000',
+            formatter: (value: string) => {
+              const parts = value.split(':');
+              return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : value;
+            },
+          },
+        },
+        yAxis: { type: 'value', name: 'Gewinn (€)', min: yMin, max: yMax, axisLabel: { color: '#000' } },
+        series: [],
+        grid: { left: '10%', right: '10%', bottom: '15%' },
+      };
 
       // Add real or simulation data if available
       if (hasRealData || hasSimulationData) {

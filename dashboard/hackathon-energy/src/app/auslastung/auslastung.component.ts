@@ -112,19 +112,19 @@ export class Auslastung implements AfterViewInit, OnDestroy {
       const hasSimulationData = !hasRealData && simulationData && simulationData.times.length > 0;
       const hasPredictionData = predictionData && predictionData.times.length > 0;
 
-      if (!hasRealData && !hasSimulationData && !hasPredictionData) {
-       // Show empty chart if no data available
-       const emptyOption: any = {
-         title: { text: `Auslastung` },
-         tooltip: { trigger: 'axis' },
-         xAxis: { type: 'category', data: [] },
-         yAxis: [{ type: 'value', name: 'Last (kWh)' }],
-         series: [],
-         grid: { left: '10%', right: '10%', bottom: '15%' },
-       };
-       this.chartInstance?.setOption(emptyOption, true);
-       return;
-     }
+       if (!hasRealData && !hasSimulationData && !hasPredictionData) {
+        // Show empty chart if no data available
+        const emptyOption: any = {
+          title: { text: `Auslastung`, textStyle: { color: '#000' } },
+          tooltip: { trigger: 'axis' },
+          xAxis: { type: 'category', data: [], axisLabel: { color: '#000' } },
+          yAxis: [{ type: 'value', name: 'Last (kWh)', axisLabel: { color: '#000' } }],
+          series: [],
+          grid: { left: '10%', right: '10%', bottom: '15%' },
+        };
+        this.chartInstance?.setOption(emptyOption, true);
+        return;
+      }
 
       // Create full 24-hour time axis (00:00 to 23:00)
       const fullTimes = [];
@@ -156,32 +156,34 @@ export class Auslastung implements AfterViewInit, OnDestroy {
      const fullPredictionPrices = hasPredictionData ? mapDataToFullAxis(predictionData.times, predictionData.prices) : new Array(24).fill(null);
      const fullForecasts = hasPredictionData && predictionData.forecasts ? mapDataToFullAxis(predictionData.times, predictionData.forecasts) : new Array(24).fill(null);
 
-     const option: any = {
-       title: { text: `Auslastung` },
-       legend: {
-         data: ['Last', 'Vorhersage-Auslastung', 'Kundenpreis', 'Vorhersagepreis'],
-         top: '4%',
-         left: 'center',
-       },
-       tooltip: { trigger: 'axis' },
-       xAxis: {
-         type: 'category',
-         data: fullTimes,
-         boundaryGap: false,
-         // axis name removed: keep tick labels but no axis title
-         axisLabel: {
-           interval: 2, // Show every 3rd hour
-           formatter: (value: string) => {
-             // Remove seconds if present (HH:MM:SS -> HH:MM)
-             const parts = value.split(':');
-             return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : value;
-           },
-         },
-       },
-       yAxis: [{ type: 'value', name: 'Last (kWh)' }],
-       series: [],
-       grid: { left: '10%', right: '10%', bottom: '15%' },
-     };
+      const option: any = {
+        title: { text: `Auslastung`, textStyle: { color: '#000' } },
+        legend: {
+          data: ['Last', 'Vorhersage-Auslastung', 'Kundenpreis', 'Vorhersagepreis'],
+          top: '4%',
+          left: 'center',
+          textStyle: { color: '#000' },
+        },
+        tooltip: { trigger: 'axis' },
+        xAxis: {
+          type: 'category',
+          data: fullTimes,
+          boundaryGap: false,
+          // axis name removed: keep tick labels but no axis title
+          axisLabel: {
+            interval: 2, // Show every 3rd hour
+            color: '#000',
+            formatter: (value: string) => {
+              // Remove seconds if present (HH:MM:SS -> HH:MM)
+              const parts = value.split(':');
+              return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : value;
+            },
+          },
+        },
+        yAxis: [{ type: 'value', name: 'Last (kWh)', axisLabel: { color: '#000' } }],
+        series: [],
+        grid: { left: '10%', right: '10%', bottom: '15%' },
+      };
 
       // Add real or simulation data loads if available
       if (hasRealData || hasSimulationData) {
@@ -189,7 +191,9 @@ export class Auslastung implements AfterViewInit, OnDestroy {
           name: 'Last',
           type: 'bar',
           data: fullLoads,
-          itemStyle: { opacity: 0.9 },
+          itemStyle: {
+            color: '#7300ff',
+            opacity: 0.9 },
           yAxisIndex: 0,
         });
       }
@@ -208,14 +212,14 @@ export class Auslastung implements AfterViewInit, OnDestroy {
           dayMax = Math.max(dayMax, Math.max(...numericPrediction));
         }
 
-        let bounds: { min: number; max: number };
-        if (dayMin >= this.priceDefaultYMin && dayMax <= this.priceDefaultYMax) {
-          bounds = { min: this.priceDefaultYMin, max: this.priceDefaultYMax };
-        } else {
-          bounds = this.getPriceBoundsWithDefaults(dayMin, dayMax);
-        }
+         let bounds: { min: number; max: number };
+         if (dayMin >= this.priceDefaultYMin && dayMax <= this.priceDefaultYMax) {
+           bounds = { min: this.priceDefaultYMin, max: this.priceDefaultYMax };
+         } else {
+           bounds = this.getPriceBoundsWithDefaults(dayMin, dayMax);
+         }
 
-        option.yAxis.push({ type: 'value', name: 'Preis (ct/kWh)', min: bounds.min, max: bounds.max });
+            option.yAxis.push({ type: 'value', name: 'Preis (ct/kWh)', min: bounds.min, max: bounds.max, axisLabel: { color: '#000' } });
         option.series.push({
           name: 'Kundenpreis',
           type: 'line',
@@ -232,13 +236,13 @@ export class Auslastung implements AfterViewInit, OnDestroy {
         if (numericPrediction.length > 0) {
           const dayMin = Math.min(...numericPrediction);
           const dayMax = Math.max(...numericPrediction);
-          let bounds;
-          if (dayMin >= this.priceDefaultYMin && dayMax <= this.priceDefaultYMax) {
-            bounds = { min: this.priceDefaultYMin, max: this.priceDefaultYMax };
-          } else {
-            bounds = this.getPriceBoundsWithDefaults(dayMin, dayMax);
-          }
-          option.yAxis.push({ type: 'value', name: 'Preis (ct/kWh)', min: bounds.min, max: bounds.max });
+           let bounds;
+           if (dayMin >= this.priceDefaultYMin && dayMax <= this.priceDefaultYMax) {
+             bounds = { min: this.priceDefaultYMin, max: this.priceDefaultYMax };
+           } else {
+             bounds = this.getPriceBoundsWithDefaults(dayMin, dayMax);
+           }
+           option.yAxis.push({ type: 'value', name: 'Preis (ct/kWh)', min: bounds.min, max: bounds.max, axisLabel: { color: '#000' } });
         }
       }
 
@@ -257,7 +261,7 @@ export class Auslastung implements AfterViewInit, OnDestroy {
              } else {
                bounds = this.getPriceBoundsWithDefaults(dayMin, dayMax);
              }
-             option.yAxis[option.yAxis.length - 1] = { type: 'value', name: 'Preis (ct/kWh)', min: bounds.min, max: bounds.max };
+              option.yAxis[option.yAxis.length - 1] = { type: 'value', name: 'Preis (ct/kWh)', min: bounds.min, max: bounds.max, axisLabel: { color: '#000' } };
            }
          }
        }
@@ -287,7 +291,7 @@ export class Auslastung implements AfterViewInit, OnDestroy {
            type: 'bar',
            data: fullForecasts as any,
            itemStyle: {
-             color: '#20B2AA',
+             color: 'rgb(32 178 170 / 0.44)',
              opacity: 0.7,
            },
            yAxisIndex: 0,

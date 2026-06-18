@@ -30,15 +30,15 @@
 }
 
 .gewinn-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-size: 12px;
-  color: #666;
-  margin-bottom: 12px;
-  font-weight: 500;
-}
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   gap: 8px;
+   font-size: 12px;
+   color: #333;
+   margin-bottom: 12px;
+   font-weight: 500;
+ }
 
 .gewinn-header .icon {
   font-size: 16px;
@@ -72,10 +72,10 @@
 }
 
 .gewinn-label {
-  font-size: 14px;
-  color: #999;
-  font-weight: 500;
-}
+   font-size: 14px;
+   color: #666;
+   font-weight: 500;
+ }
 
 .chart {
   flex: 1;

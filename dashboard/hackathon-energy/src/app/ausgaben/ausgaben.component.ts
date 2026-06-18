@@ -89,87 +89,88 @@ export class Ausgaben implements AfterViewInit, OnDestroy {
    private updateChartForDate(date: string) {
      const d = this.csvService.getAusgabenDataByDate(date);
      if (!d || d.times.length === 0) {
-       // Show empty chart if no data available
-       const emptyOption: any = {
-         title: { text: `Ausgaben` },
-         legend: { data: ['Steuern & Arbeitspreis', 'Spotpreis'], top: '4%', left: 'center' },
-         tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-         xAxis: { type: 'category', data: [] },
-         yAxis: { type: 'value', name: 'Ausgaben (ct)', min: 0 },
-         series: [],
-         grid: { left: '10%', right: '10%', top: '14%', bottom: '15%' },
-       };
-       this.chartInstance?.setOption(emptyOption, true);
-       return;
+        // Show empty chart if no data available
+        const emptyOption: any = {
+          title: { text: `Ausgaben`, textStyle: { color: '#000' } },
+          legend: { data: ['Steuern & Arbeitspreis', 'Spotpreis'], top: '4%', left: 'center', textStyle: { color: '#000' } },
+          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+          xAxis: { type: 'category', data: [], axisLabel: { color: '#000' } },
+          yAxis: { type: 'value', name: 'Ausgaben (ct)', min: 0, axisLabel: { color: '#000' } },
+          series: [],
+          grid: { left: '10%', right: '10%', top: '14%', bottom: '15%' },
+        };
+        this.chartInstance?.setOption(emptyOption, true);
+        return;
      }
 
     const maxValues = d.taxesAndCharges.map((tax, i) => tax + d.spotPrice[i]);
     const dayMax = maxValues.length ? Math.max(...maxValues) : 0;
     const yAxisMax = Math.max(70, dayMax * 1.1);
 
-    const option: any = {
-      title: { text: `Ausgaben` },
-      // show legend for the stacked bars (colors)
-      legend: { data: ['Steuern & Arbeitspreis', 'Spotpreis'], top: '4%', left: 'center' },
-      tooltip: {
-        trigger: 'axis',
-        axisPointer: { type: 'shadow' },
-        formatter: (params: any) => {
-          if (!Array.isArray(params)) params = [params];
-          let result = params[0].axisValue + '<br/>';
-          for (const p of params) {
-            if (p.seriesName === 'Steuern & Arbeitspreis') {
-              result += `${p.seriesName}: ${p.value.toFixed(2)}ct<br/>`;
-            } else if (p.seriesName === 'Spotpreis') {
-              result += `${p.seriesName}: ${p.value.toFixed(2)}ct<br/>`;
-            }
-          }
-          return result;
-        },
-      },
-      xAxis: {
-        type: 'category',
-        data: d.times,
-        boundaryGap: true,
-        // axis name removed: keep tick labels but no axis title
-        axisLabel: {
-          interval: 7,
-          formatter: (value: string) => {
-            const parts = value.split(':');
-            return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : value;
-          },
-        },
-      },
-      yAxis: { type: 'value', name: 'Ausgaben (ct)', min: 0, max: yAxisMax },
-      series: [
-        {
-          name: 'Steuern & Arbeitspreis',
-          type: 'bar',
-          data: d.taxesAndCharges,
-          stack: 'total',
-          itemStyle: { color: '#5470C6', opacity: 0.5 },
-        },
-        {
-          name: 'Spotpreis',
-          type: 'bar',
-          data: d.spotPrice,
-          stack: 'total',
-          itemStyle: { color: '#EE6666' },
-          markLine: {
-            data: [
-              {
-                name: 'Kundenpreis (59ct)',
-                yAxis: this.referencePrice,
-                lineStyle: { color: '#333', type: 'solid', width: 2 },
-                label: { position: 'insideEndTop', offset: [-10, -5] },
-              },
-            ],
-          },
-        },
-      ],
-      // leave space at the top for the legend
-      grid: { left: '10%', right: '10%', top: '14%', bottom: '15%' },
-    };
+     const option: any = {
+       title: { text: `Ausgaben`, textStyle: { color: '#000' } },
+       // show legend for the stacked bars (colors)
+       legend: { data: ['Steuern & Arbeitspreis', 'Spotpreis'], top: '4%', left: 'center', textStyle: { color: '#000' } },
+       tooltip: {
+         trigger: 'axis',
+         axisPointer: { type: 'shadow' },
+         formatter: (params: any) => {
+           if (!Array.isArray(params)) params = [params];
+           let result = params[0].axisValue + '<br/>';
+           for (const p of params) {
+             if (p.seriesName === 'Steuern & Arbeitspreis') {
+               result += `${p.seriesName}: ${p.value.toFixed(2)}ct<br/>`;
+             } else if (p.seriesName === 'Spotpreis') {
+               result += `${p.seriesName}: ${p.value.toFixed(2)}ct<br/>`;
+             }
+           }
+           return result;
+         },
+       },
+       xAxis: {
+         type: 'category',
+         data: d.times,
+         boundaryGap: true,
+         // axis name removed: keep tick labels but no axis title
+         axisLabel: {
+           interval: 7,
+           color: '#000',
+           formatter: (value: string) => {
+             const parts = value.split(':');
+             return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : value;
+           },
+         },
+       },
+       yAxis: { type: 'value', name: 'Ausgaben (ct)', min: 0, max: yAxisMax, axisLabel: { color: '#000' } },
+       series: [
+         {
+           name: 'Steuern & Arbeitspreis',
+           type: 'bar',
+           data: d.taxesAndCharges,
+           stack: 'total',
+           itemStyle: { color: '#5470C6', opacity: 0.5 },
+         },
+         {
+           name: 'Spotpreis',
+           type: 'bar',
+           data: d.spotPrice,
+           stack: 'total',
+           itemStyle: { color: '#ff9100' },
+           markLine: {
+             data: [
+               {
+                 name: 'Kundenpreis (59ct)',
+                 yAxis: this.referencePrice,
+                 lineStyle: { color: '#000', type: 'solid', width: 2 },
+                 label: { position: 'insideEndTop', offset: [-10, -5] },
+               },
+             ],
+           },
+         },
+       ],
+       // leave space at the top for the legend
+       grid: { left: '10%', right: '10%', top: '14%', bottom: '15%' },
+     };
     this.chartInstance?.setOption(option);
   }
 

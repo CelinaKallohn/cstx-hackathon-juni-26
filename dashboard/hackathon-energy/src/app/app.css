@@ -5,6 +5,8 @@
      caused lower charts to be clipped. */
   min-height: 100vh;
   overflow-y: auto;
+  background-color: #ffffff;
+  color: #000000;
 }
 
 .app-header {
@@ -51,9 +53,10 @@ app-datepicker {
   top: 56px;
   left: 0;
   right: 0;
-  background: white;
+  background: #ffffff;
   z-index: 99;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   padding: 8px 20px;
   flex-shrink: 0;
+  color: #000;
 }

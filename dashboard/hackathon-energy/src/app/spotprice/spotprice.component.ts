@@ -111,24 +111,25 @@ export class Spotprice implements AfterViewInit, OnDestroy {
       const hasSimulationData = !hasRealData && simulationData && simulationData.prices.length > 0;
       const hasPredictionData = predictionData && predictionData.prices.length > 0;
 
-      if (!hasRealData && !hasSimulationData && !hasPredictionData) {
-        // Show empty chart if no data available
-        const emptyOption: any = {
-          title: { text: `Spotmarktpreis` },
-          legend: {
-            data: ['Spotpreis', 'Vorhersage-Spotpreis'],
-            top: '4%',
-            left: 'center',
-          },
-          tooltip: { trigger: 'axis' },
-          xAxis: { type: 'category', data: [] },
-          yAxis: { type: 'value', name: 'Preis (ct/kWh)' },
-          series: [],
-          grid: { left: '10%', right: '10%', bottom: '15%' },
-        };
-        this.chartInstance?.setOption(emptyOption, true);
-        return;
-      }
+       if (!hasRealData && !hasSimulationData && !hasPredictionData) {
+         // Show empty chart if no data available
+         const emptyOption: any = {
+           title: { text: `Spotmarktpreis`, textStyle: { color: '#000' } },
+           legend: {
+             data: ['Spotpreis', 'Vorhersage-Spotpreis'],
+             top: '4%',
+             left: 'center',
+             textStyle: { color: '#000' },
+           },
+           tooltip: { trigger: 'axis' },
+           xAxis: { type: 'category', data: [], axisLabel: { color: '#000' } },
+           yAxis: { type: 'value', name: 'Preis (ct/kWh)', axisLabel: { color: '#000' } },
+           series: [],
+           grid: { left: '10%', right: '10%', bottom: '15%' },
+         };
+         this.chartInstance?.setOption(emptyOption, true);
+         return;
+       }
 
       // Use real or simulation data
       const dataSource = hasRealData ? data : (hasSimulationData ? simulationData : null);
@@ -182,29 +183,39 @@ export class Spotprice implements AfterViewInit, OnDestroy {
       }
 
       const option: any = {
-        title: { text: `Spotmarktpreis` },
-        legend: {
-          data: ['Spotpreis', 'Vorhersage-Spotpreis'],
-          top: '4%',
-          left: 'center',
-        },
-        tooltip: { trigger: 'axis' },
-        xAxis: {
-          type: 'category',
-          data: fullTimes,
-          boundaryGap: false,
-          axisLabel: {
-            interval: 2,
-            formatter: (value: string) => {
-              const parts = value.split(':');
-              return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : value;
-            },
-          },
-        },
-        yAxis: { type: 'value', name: 'Preis (ct/kWh)', min: bounds.min, max: bounds.max },
-        series: [],
-        grid: { left: '10%', right: '10%', bottom: '15%' },
-      };
+         title: { text: `Spotmarktpreis`, textStyle: { color: '#000' } },
+         legend: {
+           data: ['Spotpreis', 'Vorhersage-Spotpreis'],
+           top: '4%',
+           left: 'center',
+           textStyle: { color: '#000' },
+         },
+         tooltip: { trigger: 'axis' },
+         xAxis: {
+           type: 'category',
+           data: fullTimes,
+           boundaryGap: false,
+           axisLabel: {
+             interval: 2,
+             color: '#000',
+             formatter: (value: string) => {
+               const parts = value.split(':');
+               return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : value;
+             },
+           },
+           axisName: { textStyle: { color: '#000' } },
+         },
+         yAxis: {
+           type: 'value',
+           name: 'Preis (ct/kWh)',
+           min: bounds.min,
+           max: bounds.max,
+           axisLabel: { color: '#000' },
+           axisName: { textStyle: { color: '#000' } },
+         },
+         series: [],
+         grid: { left: '10%', right: '10%', bottom: '15%' },
+       };
 
       // Add real or simulation data if available
       if (hasRealData || hasSimulationData) {
@@ -214,6 +225,7 @@ export class Spotprice implements AfterViewInit, OnDestroy {
           data: fullPrices,
           smooth: true,
           showSymbol: false,
+          itemStyle: { color: '#ff9100' },
           areaStyle: { opacity: 0.12 },
         });
       }

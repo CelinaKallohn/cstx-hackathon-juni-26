@@ -1,3 +1,10 @@
 /* You can add global styles to this file, and also import other style files */
 
 @import 'tailwindcss';
+
+/* Global background and text color */
+body, html {
+  background-color: #ffffff;
+  color: #000000;
+}
+

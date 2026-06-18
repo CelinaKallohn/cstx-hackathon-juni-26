@@ -8,17 +8,23 @@
     </div>
   </div>
   <app-datepicker></app-datepicker>
-  <div class="flex w-full mt-32">
-    <app-spotprice class="w-1/2"></app-spotprice>
-    <app-auslastung class="w-1/2"></app-auslastung>
+  <div class="flex w-full mt-32 px-4">
+    <div class="flex-1 m-4 bg-gray-100 rounded-lg border border-gray-300 overflow-hidden py-4">
+    <app-spotprice ></app-spotprice>
+    </div>
+    <div class="flex-1 m-4 bg-gray-100 rounded-lg border border-gray-300 overflow-hidden py-4">
+    <app-auslastung ></app-auslastung>
+    </div>
   </div>
-  <div class="flex w-full">
-    <app-ausgaben class="w-1/2"></app-ausgaben>
-    <div class="flex items-center w-1/2 gap-4">
+  <div class="flex w-full px-4">
+    <div class="flex-1 m-4 bg-gray-100 rounded-lg border border-gray-300 overflow-hidden py-4">
+      <app-ausgaben></app-ausgaben>
+    </div>
+    <div class="flex-1 m-4 bg-gray-100 rounded-lg border border-gray-300 flex items-center py-4 gap-4 overflow-hidden">
       <div class="flex-1">
         <app-gewinn></app-gewinn>
       </div>
-      <div class="w-80">
+      <div class="mr-4">
         <app-tagesgewinn></app-tagesgewinn>
       </div>
     </div>
