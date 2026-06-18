@@ -46,10 +46,10 @@ from chargecast.recommend import recommend_day                   # noqa: E402
 DATA = os.path.join(HERE, '..', '..', 'data',
                     'collected_and_cleaned', 'collected_cleaned_data.csv')
 
-DATES = ['2026-06-01', '2026-06-02', '2026-06-03', '2026-06-04',
-         '2026-06-05', '2026-06-06', '2026-06-07', '2026-06-08', 
-         '2026-06-09', '2026-06-10', '2026-06-11', '2026-06-12', 
-         '2026-06-13', '2026-06-14']
+START_DATE = '2026-06-01'
+NUM_DAYS = 90
+DATES = [(pd.Timestamp(START_DATE) + pd.Timedelta(days=i)).strftime('%Y-%m-%d')
+         for i in range(NUM_DAYS)]
 
 # The customers' TRUE price sensitivity per time block (% volume shift per +10%
 # price) -- unknown to the model, which starts from a flat 50% prior. Flexible
