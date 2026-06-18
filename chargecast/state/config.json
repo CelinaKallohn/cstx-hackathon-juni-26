@@ -1,0 +1,50 @@
+{
+  "reference_price_ct": 59.0,
+  "ref_price_ct": 59.0,
+  "assumed_elasticity_pct": 50.0,
+  "prior_elasticity_pct": 50.0,
+  "prior_confidence": "medium",
+  "price_cap_ct": 150.0,
+  "price_blocks": {
+    "overnight": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "morning_peak": [
+      7,
+      8,
+      9
+    ],
+    "midday": [
+      10,
+      11,
+      12,
+      13,
+      14
+    ],
+    "afternoon": [
+      15,
+      16
+    ],
+    "evening_peak": [
+      17,
+      18,
+      19
+    ],
+    "late": [
+      20,
+      21,
+      22,
+      23
+    ]
+  },
+  "grid_arbeitspreis_ct_per_kwh": 7.48,
+  "grid_leistungspreis_eur_per_kw_a": 19.76,
+  "concession_ct_per_kwh": 0.0,
+  "taxes_levies_ct_per_kwh": 6.986
+}

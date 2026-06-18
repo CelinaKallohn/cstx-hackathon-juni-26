@@ -8,9 +8,5 @@ __pycache__/
 .venv/
 venv/
 
-# Local model/runtime state written by the CLI
-state/
-plan_*.csv
-
 # OS
 .DS_Store

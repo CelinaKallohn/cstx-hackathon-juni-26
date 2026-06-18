@@ -26,6 +26,7 @@ one file per date, dummy_data/ev_charging_<date>.csv with columns
 hourstamp, actual_kwh, charged_price_ct, spot_ct (96 rows, 15-minute).
 """
 from __future__ import annotations
+import glob
 import os
 import shutil
 import sys
@@ -45,8 +46,10 @@ from chargecast.recommend import recommend_day                   # noqa: E402
 DATA = os.path.join(HERE, '..', '..', 'KI-Hackathon Juni2026',
                     'collected_and_cleaned', 'collected_cleaned_data.csv')
 
-DATES = ['2026-06-08', '2026-06-09', '2026-06-10', '2026-06-11',
-         '2026-06-12', '2026-06-13', '2026-06-14']
+DATES = ['2026-06-01', '2026-06-02', '2026-06-03', '2026-06-04',
+         '2026-06-05', '2026-06-06', '2026-06-07', '2026-06-08', 
+         '2026-06-09', '2026-06-10', '2026-06-11', '2026-06-12', 
+         '2026-06-13', '2026-06-14']
 
 # The customers' TRUE price sensitivity per time block (% volume shift per +10%
 # price) -- unknown to the model, which starts from a flat 50% prior. Flexible
@@ -98,6 +101,10 @@ def _true_beta_by_slot(price_effect):
 
 
 def generate():
+    # clear any previously generated days so the directory matches DATES exactly
+    for old in glob.glob(os.path.join(HERE, 'ev_charging_*.csv')):
+        os.remove(old)
+
     fc, cfg, spot_by_slot = _seed_model()
     ref = ref_price(cfg)
     true_beta = _true_beta_by_slot(fc.price)
@@ -136,7 +143,7 @@ def generate():
             'charged_price_ct': np.round(prices, 2),
             'spot_ct': np.round(spot, 3),
         })
-        path = os.path.join(HERE, f'ev_charging_{date}.csv')
+        path = os.path.join(HERE, f'simulated_data_{date}.csv')
         out.to_csv(path, index=False)
 
         # report the smoothing effect (CV of demand: lower = flatter)
