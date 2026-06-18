@@ -89,6 +89,9 @@ export class Ausgaben implements AfterViewInit, OnDestroy {
       const d = this.csvService.getAusgabenDataByDate(date);
       const auslastungData = this.csvService.getAuslastungDataByDate(date);
 
+      console.log('Ausgaben data:', d);
+      console.log('Auslastung data:', auslastungData);
+
       if (!d || d.times.length === 0) {
          // Show empty chart if no data available
          const emptyOption: any = {
@@ -129,8 +132,17 @@ export class Ausgaben implements AfterViewInit, OnDestroy {
      const fullTaxesAndCharges = mapDataToFullAxis(d.times, d.taxesAndCharges);
      const fullSpotPrice = mapDataToFullAxis(d.times, d.spotPrice);
 
-     // Get prices from Auslastung data (same as displayed in Auslastung component)
-     const fullPrices = mapDataToFullAxis(auslastungData.times, auslastungData.prices || []);
+     // Get prices - prefer Auslastung data if available, fallback to customerPrice from Ausgaben
+     let fullPrices: Array<number | null>;
+     if (auslastungData.times && auslastungData.times.length > 0) {
+       fullPrices = mapDataToFullAxis(auslastungData.times, auslastungData.prices || []);
+       console.log('Using prices from Auslastung data');
+     } else {
+       // Fallback to customerPrice from Ausgaben data
+       fullPrices = mapDataToFullAxis(d.times, d.customerPrice || []);
+       console.log('Using prices from Ausgaben customerPrice');
+     }
+     console.log('Mapped prices:', fullPrices);
 
      const maxValues = fullTaxesAndCharges.map((tax, i) => {
        const totalBar = (tax !== null ? tax : 0) + (fullSpotPrice[i] !== null ? fullSpotPrice[i] : 0);
@@ -204,6 +216,7 @@ export class Ausgaben implements AfterViewInit, OnDestroy {
         // leave space at the top for the legend
         grid: { left: '10%', right: '10%', top: '14%', bottom: '15%' },
       };
+     console.log('Chart option:', option);
      this.chartInstance?.setOption(option);
    }
 
