@@ -1,0 +1,39 @@
+.auslastung-wrap {
+  display: block;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+.auslastung-wrap.ai-mode {
+  background-color: #f3f8ff;
+  border-radius: 6px;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.controls button {
+  padding: 4px 8px;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.controls button.active {
+  background: #1f77b4;
+  color: #fff;
+  border-color: #155d8b;
+}
+
+.chart {
+  width: 100%;
+  height: 320px;
+}
+
+
+

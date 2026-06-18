@@ -1,13 +1,23 @@
-<div class="gewinn-card" [class.gewinn]="isProfit" [class.verlust]="!isProfit">
-  <div class="gewinn-header">
-    <span class="label">Gesamtgewinn</span>
-    <span class="icon" *ngIf="isProfit">✓</span>
-    <span class="icon" *ngIf="!isProfit">✗</span>
+<div class="tagesgewinn-wrap">
+  <div class="gewinn-card" [class.gewinn]="isProfit" [class.verlust]="!isProfit">
+    <div class="gewinn-header">
+      <span class="label">Gesamtgewinn</span>
+      <span class="icon" *ngIf="isProfit && currentDayGain !== null">✓</span>
+      <span class="icon" *ngIf="!isProfit && currentDayGain !== null">✗</span>
+    </div>
+    <div class="gewinn-value">
+      {{ currentDayGain !== null ? (isProfit ? '+' : '') + '€' + Math.abs(currentDayGain).toFixed(2) : '-' }}
+    </div>
+    <div class="gewinn-label">{{ currentDayGain !== null ? (isProfit ? 'Gewinn' : 'Verlust') : 'Keine Daten' }}</div>
   </div>
-  <div class="gewinn-value">
-    {{ isProfit ? '+' : '' }}€{{ currentDayGain ? Math.abs(currentDayGain).toFixed(2) : '0.00' }}
+  <div class="gewinn-card gewinn-predicted" *ngIf="predictedGain !== null">
+    <div class="gewinn-header">
+      <span class="label">Vorhergesagter Gewinn</span>
+    </div>
+    <div class="gewinn-value">
+      {{ (predictedGain >= 0 ? '+' : '') + '€' + Math.abs(predictedGain).toFixed(2) }}
+    </div>
   </div>
-  <div class="gewinn-label">{{ isProfit ? 'Gewinn' : 'Verlust' }}</div>
 </div>
 
 

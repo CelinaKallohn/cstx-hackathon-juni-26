@@ -1,0 +1,26 @@
+<div>
+  <div class="app-header">
+    <div class="header-content">
+      <div class="header-title">
+        <h1>BS-Energy</h1>
+        <p>E-Mobilität Lastenmanagement</p>
+      </div>
+    </div>
+  </div>
+  <app-datepicker></app-datepicker>
+  <div class="flex w-full mt-32">
+    <app-spotprice class="w-1/2"></app-spotprice>
+    <app-auslastung class="w-1/2"></app-auslastung>
+  </div>
+  <div class="flex w-full">
+    <app-ausgaben class="w-1/2"></app-ausgaben>
+    <div class="flex items-center w-1/2 gap-4">
+      <div class="flex-1">
+        <app-gewinn></app-gewinn>
+      </div>
+      <div class="w-80">
+        <app-tagesgewinn></app-tagesgewinn>
+      </div>
+    </div>
+  </div>
+</div>

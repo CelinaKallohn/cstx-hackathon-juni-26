@@ -1,0 +1,59 @@
+:host {
+  display: block;
+  /* Allow the page to grow and be scrollable so lower charts are reachable
+     Previously height:100vh and overflow:hidden prevented scrolling and
+     caused lower charts to be clipped. */
+  min-height: 100vh;
+  overflow-y: auto;
+}
+
+.app-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(135deg, #1a3a52 0%, #2d5a7b 100%);
+  color: white;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  padding: 8px 20px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.header-content {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  flex: 1;
+}
+
+.header-title h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.header-title p {
+  margin: 0;
+  font-size: 11px;
+  opacity: 0.85;
+  font-weight: 300;
+  letter-spacing: 0.3px;
+}
+
+app-datepicker {
+  position: fixed;
+  top: 56px;
+  left: 0;
+  right: 0;
+  background: white;
+  z-index: 99;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 8px 20px;
+  flex-shrink: 0;
+}

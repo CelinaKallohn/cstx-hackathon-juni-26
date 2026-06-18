@@ -1,5 +1,6 @@
 .tagesgewinn-wrap {
   display: flex;
+  flex-direction: column;
   gap: 16px;
   align-items: flex-start;
 }
@@ -7,7 +8,7 @@
 .gewinn-card {
   padding: 20px;
   border-radius: 8px;
-  min-width: 200px;
+  min-width: 180px;
   text-align: center;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   transition: all 0.3s ease;
@@ -21,6 +22,11 @@
 .gewinn-card.verlust {
   background: linear-gradient(135deg, rgba(238, 102, 102, 0.15), rgba(238, 102, 102, 0.05));
   border: 2px solid #EE6666;
+}
+
+.gewinn-card.gewinn-predicted {
+  background: linear-gradient(135deg, rgba(135, 206, 235, 0.15), rgba(135, 206, 235, 0.05));
+  border: 2px solid #87CEEB;
 }
 
 .gewinn-header {
@@ -59,6 +65,10 @@
 
 .gewinn-card.verlust .gewinn-value {
   color: #EE6666;
+}
+
+.gewinn-card.gewinn-predicted .gewinn-value {
+  color: #87CEEB;
 }
 
 .gewinn-label {

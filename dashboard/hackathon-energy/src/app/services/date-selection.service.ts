@@ -42,12 +42,29 @@ export class DateSelectionService {
     }
   }
 
-  prev() {
-    this.setSelectedIndex(this.indexSubject.getValue() - 1);
-  }
+   prev() {
+     const currentIso = this.dateIsoSubject.getValue();
+     if (!currentIso) return;
+     const prevIso = this.addDaysIso(currentIso, -1);
+     this.dateIsoSubject.next(prevIso);
+   }
 
-  next() {
-    this.setSelectedIndex(this.indexSubject.getValue() + 1);
+   next() {
+     const currentIso = this.dateIsoSubject.getValue();
+     if (!currentIso) return;
+     const nextIso = this.addDaysIso(currentIso, 1);
+     this.dateIsoSubject.next(nextIso);
+   }
+
+  private addDaysIso(iso: string, delta: number): string {
+    const p = iso.split('-');
+    if (p.length !== 3) return iso;
+    const dt = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    dt.setDate(dt.getDate() + delta);
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const d = String(dt.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   }
 
   private toIso(ddmmyyyy: string): string {

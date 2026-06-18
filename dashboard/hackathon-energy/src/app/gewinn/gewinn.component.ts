@@ -6,6 +6,7 @@ import { TitleComponent, TooltipComponent, GridComponent, LegendComponent } from
 import { CanvasRenderer } from 'echarts/renderers';
 import { Subscription } from 'rxjs';
 import { DateSelectionService } from '../services/date-selection.service';
+import { CsvDataService } from '../services/csv-data.service';
 
 // Register required ECharts components for line chart
 echarts.use([LineChart, TitleComponent, TooltipComponent, GridComponent, LegendComponent, CanvasRenderer]);
@@ -26,14 +27,12 @@ export class Gewinn implements AfterViewInit, OnDestroy {
   @ViewChild('chart', { static: true }) chartEl!: ElementRef<HTMLDivElement>;
   private chartInstance: echarts.ECharts | null = null;
 
-  // parsed data: date (DD.MM.YYYY) -> { times, profit }
-  private dataByDate: Record<string, DayData> = {};
   dates: string[] = [];
   selectedDateIndex = 0;
 
   private dateSub?: Subscription;
 
-  constructor(private readonly dateService: DateSelectionService) {}
+  constructor(private readonly dateService: DateSelectionService, private readonly csvService: CsvDataService) {}
 
   ngAfterViewInit(): void {
     this.chartInstance = echarts.init(this.chartEl.nativeElement);
@@ -42,17 +41,10 @@ export class Gewinn implements AfterViewInit, OnDestroy {
 
   private async init(): Promise<void> {
     try {
-      const resp = await fetch('/collected_cleaned_data.csv');
-      if (!resp.ok) throw new Error('Konnte CSV nicht laden');
-      const txt = await resp.text();
-      this.parseCsv(txt);
+      await this.csvService.ensureLoaded();
+      this.dates = this.csvService.getAvailableDates();
+      this.selectedDateIndex = Math.max(0, this.dates.length - 1);
 
-      const initDate = this.selectedDate();
-      if (initDate) {
-        this.updateChartForDate(initDate);
-      }
-
-      // Merge available dates from other components
       const currentDates = (this.dateService as any)['datesSubject'].getValue() || [];
       const mergedDates = Array.from(new Set([...currentDates, ...this.dates])).sort((a, b) => {
         const pa = a.split('.').map(Number);
@@ -65,20 +57,23 @@ export class Gewinn implements AfterViewInit, OnDestroy {
         this.dateService.setAvailableDates(mergedDates);
       }
 
-      // Subscribe for date changes
-      this.dateSub = this.dateService.date$.subscribe(iso => {
-        if (!iso) return;
-        const parts = iso.split('-');
-        if (parts.length !== 3) return;
-        const dateStr = `${parts[2].padStart(2, '0')}.${parts[1].padStart(2, '0')}.${parts[0]}`;
-        const idx = this.dates.indexOf(dateStr);
-        if (idx !== -1 && idx !== this.selectedDateIndex) {
-          this.selectedDateIndex = idx;
-          if (dateStr) {
-            this.updateChartForDate(dateStr);
-          }
-        }
-      });
+      const initDate = this.selectedDate();
+      if (initDate) this.updateChartForDate(initDate);
+
+       this.dateSub = this.dateService.date$.subscribe(iso => {
+         if (!iso) return;
+         const parts = iso.split('-');
+         if (parts.length !== 3) return;
+         const dateStr = `${parts[2].padStart(2, '0')}.${parts[1].padStart(2, '0')}.${parts[0]}`;
+         const idx = this.dates.indexOf(dateStr);
+         if (idx !== -1 && idx !== this.selectedDateIndex) {
+           this.selectedDateIndex = idx;
+           if (dateStr) this.updateChartForDate(dateStr);
+         } else if (idx === -1 && !this.dates.includes(dateStr)) {
+           // Date not available, show empty chart
+           this.updateChartForDate(dateStr);
+         }
+       });
 
       window.addEventListener('resize', this.onResize);
     } catch (err) {
@@ -90,130 +85,174 @@ export class Gewinn implements AfterViewInit, OnDestroy {
     return this.dates.length > 0 ? this.dates[this.selectedDateIndex] : null;
   }
 
-  private parseCsv(content: string) {
-    const lines = content.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-    if (lines.length === 0) return;
+  // CSV parsing delegated to CsvDataService
 
-    // header: ...;Gewinn
-    const header = lines[0].split(';').map(h => h.toLowerCase().replaceAll('"', ''));
-    const dateIdx = Math.max(0, header.findIndex(h => h.includes('datum')));
-    const timeIdx = Math.max(1, header.findIndex(h => h.includes('uhrzeit')));
-    const gainIdx = Math.max(8, header.findIndex(h => h.includes('gewinn')));
+     private updateChartForDate(date: string) {
+       const d = this.csvService.getGewinnDataByDate(date);
+       const simulationData = this.csvService.getProfitSimulationDataByDate(date);
+       const predictionData = this.csvService.getProfitPredictionDataByDate(date);
 
-    for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split(';').map(c => c.replaceAll('"', ''));
-      if (cols.length <= Math.max(dateIdx, timeIdx, gainIdx)) continue;
+       // Use real data if available, otherwise simulation data
+       const hasRealData = d && d.times.length > 0;
+       const hasSimulationData = !hasRealData && simulationData && simulationData.profit.length > 0;
+       const hasPredictionData = predictionData && predictionData.profit.length > 0;
 
-      // Normalize date
-      let dateStr = cols[dateIdx];
-      const dateParts = dateStr.split('.');
-      if (dateParts.length !== 3) continue;
-      dateStr = `${dateParts[0].padStart(2, '0')}.${dateParts[1].padStart(2, '0')}.${dateParts[2]}`;
-
-      const time = cols[timeIdx];
-
-      // Parse gain value
-      let gainStr = cols[gainIdx] || '';
-      gainStr = gainStr.replaceAll('.', '').replace(',', '.');
-      const gain = Number.parseFloat(gainStr);
-
-      if (Number.isNaN(gain)) continue;
-
-      if (!this.dataByDate[dateStr]) {
-        this.dataByDate[dateStr] = { times: [], profit: [] };
+      if (!hasRealData && !hasSimulationData && !hasPredictionData) {
+        // Show empty chart if no data available
+        const emptyOption: any = {
+          title: { text: `Gewinn` },
+          legend: {
+            data: ['Gewinn', 'Verlust', 'Vorhersage'],
+            top: '4%',
+            left: 'center',
+          },
+          tooltip: { trigger: 'axis' },
+          xAxis: { type: 'category', data: [] },
+          yAxis: { type: 'value', name: 'Gewinn (€)' },
+          series: [],
+          grid: { left: '10%', right: '10%', bottom: '15%' },
+        };
+        this.chartInstance?.setOption(emptyOption, true);
+        return;
       }
-      this.dataByDate[dateStr].times.push(time);
-      this.dataByDate[dateStr].profit.push(gain / 100); // Convert from ct to €
-    }
 
-    this.dates = Object.keys(this.dataByDate).sort((a, b) => {
-      const pa = a.split('.').map(Number);
-      const pb = b.split('.').map(Number);
-      const da = new Date(pa[2], pa[1] - 1, pa[0]);
-      const db = new Date(pb[2], pb[1] - 1, pb[0]);
-      return da.getTime() - db.getTime();
-    });
-    this.selectedDateIndex = Math.max(0, this.dates.length - 1);
-  }
+      // Use real data, or simulation data if not available
+      const dataSource = hasRealData ? d : (hasSimulationData ? { times: simulationData.times, profit: simulationData.profit } : null);
 
-  private updateChartForDate(date: string) {
-    const d = this.dataByDate[date];
-    if (!d) return;
+      // Create full 24-hour time axis
+      const fullTimes = [];
+      for (let h = 0; h < 24; h++) {
+        fullTimes.push(`${String(h).padStart(2, '0')}:00:00`);
+      }
 
-    // Calculate min/max for dynamic y-axis
-    const profitMin = d.profit.length ? Math.min(...d.profit) : 0;
-    const profitMax = d.profit.length ? Math.max(...d.profit) : 0;
-    const padding = (profitMax - profitMin) * 0.1 || 5;
-    const yMin = Math.floor(profitMin - padding);
-    const yMax = Math.ceil(profitMax + padding);
+      // Map data to the full 24-hour axis
+      const mapDataToFullAxis = (sourceTimes: string[], sourceData: any[]): any[] => {
+        const fullData = new Array(24).fill(null);
 
-    // Split data into positive and negative for separate series with different colors
-    const positiveData = d.profit.map(v => v >= 0 ? v : undefined);
-    const negativeData = d.profit.map(v => v < 0 ? v : undefined);
-
-    const option: any = {
-      title: { text: `Gewinn` },
-      tooltip: {
-        trigger: 'axis',
-        formatter: (params: any) => {
-          if (!Array.isArray(params)) params = [params];
-          let result = params[0].axisValue + '<br/>';
-          for (const p of params) {
-            const value = p.value;
-            if (value !== undefined && value !== null) {
-              const label = value >= 0 ? `✓ Gewinn: €${Math.abs(value).toFixed(2)}` : `✗ Verlust: €${Math.abs(value).toFixed(2)}`;
-              result += label + '<br/>';
-            }
+        for (let i = 0; i < sourceTimes.length; i++) {
+          const time = sourceTimes[i];
+          const hour = parseInt(time.split(':')[0]);
+          if (hour >= 0 && hour < 24) {
+            fullData[hour] = sourceData[i];
           }
-          return result;
-        },
-      },
-      xAxis: {
-        type: 'category',
-        data: d.times,
-        boundaryGap: false,
-        name: 'Uhrzeit',
-        axisLabel: {
-          interval: 7,
-          formatter: (value: string) => {
-            const parts = value.split(':');
-            return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : value;
+        }
+
+        return fullData;
+      };
+
+      // Map data to the full axis
+      const fullProfit = (hasRealData || hasSimulationData) && dataSource ? mapDataToFullAxis(dataSource.times, dataSource.profit) : new Array(24).fill(null);
+      const fullPredictionProfit = hasPredictionData ? mapDataToFullAxis(predictionData.times, predictionData.profit) : new Array(24).fill(null);
+
+      // Calculate min/max including prediction data
+      let profitMin = 0;
+      let profitMax = 0;
+
+      const numericProfit = fullProfit.filter((v): v is number => v !== null && v !== undefined);
+      if (numericProfit.length > 0) {
+        profitMin = Math.min(...numericProfit);
+        profitMax = Math.max(...numericProfit);
+      }
+
+      const numericPredictionProfit = fullPredictionProfit.filter((v): v is number => v !== null && v !== undefined);
+      if (numericPredictionProfit.length > 0) {
+        profitMin = Math.min(profitMin, Math.min(...numericPredictionProfit));
+        profitMax = Math.max(profitMax, Math.max(...numericPredictionProfit));
+      }
+
+     const padding = (profitMax - profitMin) * 0.1 || 5;
+     const yMin = Math.floor(profitMin - padding);
+     const yMax = Math.ceil(profitMax + padding);
+
+     const positiveData = fullProfit.map(v => (v !== null && v !== undefined && v >= 0) ? v : undefined);
+     const negativeData = fullProfit.map(v => (v !== null && v !== undefined && v < 0) ? v : undefined);
+
+     const option: any = {
+       title: { text: `Gewinn` },
+       legend: {
+         data: ['Gewinn', 'Verlust', 'Vorhersage'],
+         top: '4%',
+         left: 'center',
+       },
+       tooltip: {
+         trigger: 'axis',
+         formatter: (params: any) => {
+           if (!Array.isArray(params)) params = [params];
+           let result = params[0].axisValue + '<br/>';
+           for (const p of params) {
+             const value = p.value;
+             if (value !== undefined && value !== null) {
+               const label = value >= 0 ? `✓ ${p.seriesName}: €${Math.abs(value).toFixed(2)}` : `✗ ${p.seriesName}: €${Math.abs(value).toFixed(2)}`;
+               result += label + '<br/>';
+             }
+           }
+           return result;
+         },
+       },
+       xAxis: {
+         type: 'category',
+         data: fullTimes,
+         boundaryGap: false,
+         axisLabel: {
+           interval: 2,
+           formatter: (value: string) => {
+             const parts = value.split(':');
+             return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : value;
+           },
+         },
+       },
+       yAxis: { type: 'value', name: 'Gewinn (€)', min: yMin, max: yMax },
+       series: [],
+       grid: { left: '10%', right: '10%', bottom: '15%' },
+     };
+
+      // Add real or simulation data if available
+      if (hasRealData || hasSimulationData) {
+        option.series.push(
+          {
+            name: 'Gewinn',
+            type: 'line',
+            data: positiveData,
+            smooth: true,
+            itemStyle: { color: '#91CB74' },
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: 'rgba(145, 203, 116, 0.3)' },
+                { offset: 1, color: 'rgba(145, 203, 116, 0.1)' },
+              ]),
+            },
           },
-        },
-      },
-      yAxis: { type: 'value', name: 'Gewinn (€)', min: yMin, max: yMax },
-      series: [
-        {
-          name: 'Gewinn',
+          {
+            name: 'Verlust',
+            type: 'line',
+            data: negativeData,
+            smooth: true,
+            itemStyle: { color: '#EE6666' },
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: 'rgba(238, 102, 102, 0.3)' },
+                { offset: 1, color: 'rgba(238, 102, 102, 0.1)' },
+              ]),
+            },
+          }
+        );
+      }
+
+      // Add prediction data if available (light blue)
+      if (hasPredictionData && fullPredictionProfit.some(v => v !== null && v !== undefined)) {
+        option.series.push({
+          name: 'Vorhersage',
           type: 'line',
-          data: positiveData,
+          data: fullPredictionProfit,
           smooth: true,
-          itemStyle: { color: '#91CB74' },
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: 'rgba(145, 203, 116, 0.3)' },
-              { offset: 1, color: 'rgba(145, 203, 116, 0.1)' },
-            ]),
-          },
-        },
-        {
-          name: 'Verlust',
-          type: 'line',
-          data: negativeData,
-          smooth: true,
-          itemStyle: { color: '#EE6666' },
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: 'rgba(238, 102, 102, 0.3)' },
-              { offset: 1, color: 'rgba(238, 102, 102, 0.1)' },
-            ]),
-          },
-        },
-      ],
-      grid: { left: '10%', right: '10%', bottom: '15%' },
-    };
-    this.chartInstance?.setOption(option);
-  }
+          lineStyle: { width: 2, color: '#87CEEB' },
+          itemStyle: { color: '#87CEEB' },
+          showSymbol: false,
+        });
+      }
+
+      this.chartInstance?.setOption(option, true);
+    }
 
   private readonly onResize = () => {
     if (this.chartInstance) this.chartInstance.resize();
